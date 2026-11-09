@@ -13,6 +13,7 @@
   <header class="topbar">
     <div class="brand"><span class="logo">✦</span> Sổ Điểm</div>
     <nav id="classTabs" class="class-tabs" aria-label="Chọn lớp"></nav>
+    <span id="syncStatus" class="sync local">💾 Chỉ lưu trên máy này</span>
     <div class="font-ctrl">
       <label>Font
         <select id="fontSel"></select>
@@ -68,6 +69,8 @@
 
   <input type="file" id="importFile" accept="application/json" hidden>
 
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
+  <script type="module" src="cloud.js"></script>
 </body>
 </html>

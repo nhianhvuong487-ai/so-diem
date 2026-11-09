@@ -41,3 +41,11 @@ Bảng kế hoạch học gồm: tuần, ngày, kỹ năng, nội dung bài họ
 - Dữ liệu tự lưu trong `localStorage` của trình duyệt, tức là chỉ nằm trên máy và trình duyệt đang dùng.
 - **Sao lưu** tải về file `.json`. **Khôi phục** nạp lại file đó, ví dụ khi chuyển sang máy khác.
 - **Xuất Excel (CSV)** xuất sheet đang xem.
+
+## Dùng chung một bảng điểm (Firebase)
+Khi điền cấu hình Firebase vào `firebase-config.js`, mọi người mở link đều thấy và sửa chung một bảng điểm,
+thay đổi hiện ngay trên máy người khác. Góc trên hiện **☁️ Đã lưu chung**.
+Lần kết nối đầu tiên, nếu Firebase còn trống, web sẽ tự đẩy điểm đang có trên máy lên.
+Nếu chưa có cấu hình, web chỉ lưu trên máy (**💾 Chỉ lưu trên máy này**).
+
+Dữ liệu nằm trong Firestore, ở 2 collection `sodiem_classes` và `sodiem_sheets`.
