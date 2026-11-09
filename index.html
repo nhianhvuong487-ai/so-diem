@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sổ Điểm Học Sinh</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📘 Sổ Điểm</div>
+    <nav id="classTabs" class="class-tabs" aria-label="Chọn lớp"></nav>
+  </header>
+
+  <main>
+    <nav id="sheetTabs" class="sheet-tabs" aria-label="Chọn sheet"></nav>
+
+    <section class="toolbar" id="toolbar"></section>
+
+    <p class="hint" id="hint"></p>
+
+    <div class="table-wrap" id="content"></div>
+  </main>
+
+  <dialog id="bulkDialog">
+    <form method="dialog">
+      <h3>Thêm nhiều học sinh</h3>
+      <p>Dán danh sách họ tên, mỗi dòng một học sinh:</p>
+      <textarea id="bulkNames" rows="12" placeholder="Nguyễn Văn A&#10;Trần Thị B&#10;..."></textarea>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn">Huỷ</button>
+        <button value="ok" class="btn primary" id="bulkOk">Thêm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="importFile" accept="application/json" hidden>
+
+  <script src="app.js"></script>
+</body>
+</html>
