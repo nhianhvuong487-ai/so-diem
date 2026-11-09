@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sổ Điểm Học Sinh</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Lexend:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">✦</span> Sổ Điểm</div>
+    <nav id="classTabs" class="class-tabs" aria-label="Chọn lớp"></nav>
+    <div class="font-ctrl">
+      <label>Font
+        <select id="fontSel"></select>
+      </label>
+      <label>Cỡ chữ
+        <select id="sizeSel"></select>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <nav id="sheetTabs" class="sheet-tabs" aria-label="Chọn sheet"></nav>
+
+    <section class="toolbar" id="toolbar"></section>
+
+    <p class="hint" id="hint"></p>
+
+    <div class="table-wrap" id="content"></div>
+  </main>
+
+  <dialog id="bulkDialog">
+    <form method="dialog">
+      <h3>Thêm nhiều học sinh</h3>
+      <p>Dán danh sách họ tên, mỗi dòng một học sinh:</p>
+      <textarea id="bulkNames" rows="12" placeholder="Nguyễn Văn A&#10;Trần Thị B&#10;..."></textarea>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn">Huỷ</button>
+        <button value="ok" class="btn primary">Thêm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="colDialog">
+    <form method="dialog">
+      <h3>Thêm cột vào mỗi buổi</h3>
+      <label class="field">Tên cột
+        <input type="text" id="colName" placeholder="VD: Điểm nói" required>
+      </label>
+      <label class="field">Loại cột
+        <select id="colType">
+          <option value="score">Điểm (nhập số câu đúng → quy đổi /10)</option>
+          <option value="check">Ô tích</option>
+          <option value="attend">Điểm danh (✓ có mặt / ✗ vắng)</option>
+          <option value="text">Ghi chú (chữ)</option>
+        </select>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn" formnovalidate>Huỷ</button>
+        <button value="ok" class="btn primary">Thêm cột</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="importFile" accept="application/json" hidden>
+
+  <script src="app.js"></script>
+</body>
+</html>
