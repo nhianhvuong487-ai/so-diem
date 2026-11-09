@@ -6,7 +6,7 @@
   const UI_KEY = 'so-diem-ui-v1';
   const DEFAULT_SESSIONS = 10;
 
-  const CLASSES = [
+  const DEFAULT_CLASSES = [
     { id: '7', name: 'Lớp 7' },
     { id: '8', name: 'Lớp 8' },
     { id: '9.1', name: '9.1', group: 'Lớp 9' },
@@ -17,6 +17,10 @@
       { key: 'ktdg', label: 'Nội dung bài KT đầu giờ' },
     ] },
   ];
+  // Danh sách lớp có thể thêm / xoá (lưu trong state.config, đồng bộ qua doc "_config")
+  let CLASSES = DEFAULT_CLASSES.map(c => Object.assign({}, c));
+  let TRASH = [];   // lớp đã xoá – vẫn giữ dữ liệu, khôi phục được
+  const CONFIG_DOC = '_config';
 
   const SHEETS = [
     { id: 'trenlop', name: 'Điểm trên lớp', type: 'sessions' },
@@ -58,7 +62,25 @@
   let state = load(STORAGE_KEY) || { classes: {} };
   if (!state.classes) state.classes = {};
   const ui = Object.assign({ cls: '7', sheet: 'trenlop', session: 'all', font: FONTS[0].name, size: 14 }, load(UI_KEY) || {});
-  if (!CLASSES.some(c => c.id === ui.cls)) ui.cls = '7';
+  applyConfig(state.config);
+  if (!CLASSES.some(c => c.id === ui.cls)) ui.cls = CLASSES.length ? CLASSES[0].id : '7';
+
+  function applyConfig(cfg) {
+    if (cfg && Array.isArray(cfg.classes)) {
+      CLASSES = cfg.classes.map(c => Object.assign({}, c));
+      TRASH = Array.isArray(cfg.trash) ? cfg.trash.map(c => Object.assign({}, c)) : [];
+    } else {
+      CLASSES = DEFAULT_CLASSES.map(c => Object.assign({}, c));
+      TRASH = [];
+    }
+  }
+  function configObj() { return { classes: clone(CLASSES), trash: clone(TRASH) }; }
+  function saveConfig() {
+    state.config = configObj();
+    sync(COL_CLASSES, CONFIG_DOC, ['classes'], state.config.classes);
+    sync(COL_CLASSES, CONFIG_DOC, ['trash'], state.config.trash);
+    save();
+  }
   if (!SHEETS.some(s => s.id === ui.sheet)) ui.sheet = 'trenlop';
 
   function load(key) {
@@ -141,12 +163,17 @@
     remote[col + '\u0001' + id] = data;
     const d = withPending(col, id, data);
     if (col === COL_CLASSES) {
-      if (!CLASSES.some(c => c.id === id)) return;
+      if (id === CONFIG_DOC) {
+        state.config = d && Array.isArray(d.classes) ? d : undefined;
+        applyConfig(state.config);
+        return;
+      }
       classData(id).students = studentsFromMap(d.students);
     } else if (col === COL_SHEETS) {
       const i = id.lastIndexOf('__');
+      if (i <= 0) return;
       const cid = id.slice(0, i), sid = id.slice(i + 2);
-      if (!CLASSES.some(c => c.id === cid) || !sheetDef(sid)) return;
+      if (!sheetDef(sid)) return;
       classData(cid).sheets[sid] = d;
     }
   }
@@ -154,12 +181,19 @@
   function viewSnapshot() {
     return JSON.stringify([classData(ui.cls).students, sheetData(ui.cls, ui.sheet)]);
   }
+  function configSnapshot() { return JSON.stringify([CLASSES, TRASH]); }
 
   let remoteRenderTimer = null;
   function onRemoteDoc(col, id, data) {
+    const cfgBefore = configSnapshot();
     const before = viewSnapshot();
     applyDoc(col, id, data);
     save();
+    if (configSnapshot() !== cfgBefore) {
+      if (!CLASSES.some(c => c.id === ui.cls)) { ui.cls = CLASSES.length ? CLASSES[0].id : ui.cls; ui.session = 'all'; }
+      renderClassTabs();
+      if ($('#classDialog').open) renderClassManager();
+    }
     if (viewSnapshot() === before) return;
     clearTimeout(remoteRenderTimer);
     remoteRenderTimer = setTimeout(() => renderKeepFocus(), 120);
@@ -173,8 +207,9 @@
   /** Đẩy toàn bộ dữ liệu trên máy này lên đám mây (lần đầu, hoặc khi khôi phục) */
   function uploadAll() {
     const jobs = [];
+    jobs.push(cloud.replace(COL_CLASSES, CONFIG_DOC, configObj()));
     Object.keys(state.classes).forEach(cid => {
-      if (!CLASSES.some(c => c.id === cid)) return;
+      if (!CLASSES.some(c => c.id === cid) && !TRASH.some(c => c.id === cid)) return;
       const c = classData(cid);
       const map = {};
       c.students.forEach((s, i) => { map[s.id] = { name: s.name, order: s.order || i + 1 }; });
@@ -216,7 +251,9 @@
         await uploadAll();
       } else {
         state = { classes: {} };
+        applyConfig(undefined);
         all[COL_CLASSES].forEach(d => applyDoc(COL_CLASSES, d.id, d.data));
+        if (!CLASSES.some(c => c.id === ui.cls)) { ui.cls = CLASSES.length ? CLASSES[0].id : ui.cls; ui.session = 'all'; }
         all[COL_SHEETS].forEach(d => applyDoc(COL_SHEETS, d.id, d.data));
         saveNow();
         renderAll();
@@ -347,7 +384,8 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
   function className(cid) {
-    const c = CLASSES.find(x => x.id === cid);
+    const c = CLASSES.find(x => x.id === cid) || TRASH.find(x => x.id === cid);
+    if (!c) return 'Lớp';
     return c.group ? 'Lớp ' + c.name : c.name;
   }
   function sessionLabel(sh, sid) {
@@ -400,6 +438,7 @@
         i++;
       }
     }
+    html += `<button class="cls-manage" id="manageClasses" title="Thêm, đổi tên, xoá hoặc khôi phục lớp">⚙ Lớp</button>`;
     $('#classTabs').innerHTML = html;
     updateCounts();
   }
@@ -498,7 +537,7 @@
     const cf = {};
     sessions.forEach(s => { cf[s.id] = colsFor(sh, s.id); });
     const width = sessions.reduce((a, s) => a + Math.max(cf[s.id].length, 1), 0);
-    const notes = ui.sheet === 'trenlop' ? (CLASSES.find(c => c.id === ui.cls).notes || []) : [];
+    const notes = ui.sheet === 'trenlop' ? ((CLASSES.find(c => c.id === ui.cls) || {}).notes || []) : [];
 
     let h = `<h2 class="print-title">${esc(className(ui.cls))} – ${esc(sheetDef(ui.sheet).name)}</h2>`;
     h += '<table class="grid"><thead><tr>';
@@ -733,6 +772,86 @@
     renderContent();
   }
 
+  // ---------- Quản lý lớp: thêm / đổi tên / xoá (vào thùng rác) / khôi phục ----------
+  function fullClassName(c) { return c.group ? c.group + ' – ' + c.name : c.name; }
+  function renderClassManager() {
+    $('#classList').innerHTML = CLASSES.map((c, i) => `
+      <li><span class="cl-name">${esc(fullClassName(c))}</span>
+        <span class="muted">${classData(c.id).students.length} HS</span>
+        <span class="cl-actions">
+          <button type="button" class="btn" data-clsup="${i}" ${i === 0 ? 'disabled' : ''} title="Lên">↑</button>
+          <button type="button" class="btn" data-clsdown="${i}" ${i === CLASSES.length - 1 ? 'disabled' : ''} title="Xuống">↓</button>
+          <button type="button" class="btn" data-clsren="${esc(c.id)}">Đổi tên</button>
+          <button type="button" class="btn danger-soft" data-clsdel="${esc(c.id)}">Xoá</button>
+        </span></li>`).join('');
+    $('#trashBox').hidden = !TRASH.length;
+    $('#trashList').innerHTML = TRASH.map(c => `
+      <li><span class="cl-name">${esc(fullClassName(c))}</span>
+        <span class="muted">${classData(c.id).students.length} HS · xoá lúc ${esc(new Date(c.deletedAt || 0).toLocaleString('vi-VN'))}</span>
+        <span class="cl-actions"><button type="button" class="btn primary" data-clsrestore="${esc(c.id)}">↺ Khôi phục</button></span></li>`).join('');
+  }
+  function openClassManager() {
+    $('#newClassName').value = '';
+    renderClassManager();
+    $('#classDialog').showModal();
+  }
+  function afterClassChange() {
+    saveConfig();
+    renderClassManager();
+    renderClassTabs();
+    renderToolbar();
+    renderContent();
+  }
+  function addClass() {
+    const name = $('#newClassName').value.trim();
+    if (!name) { $('#newClassName').focus(); return; }
+    if ([...CLASSES, ...TRASH].some(c => fullClassName(c).toLowerCase() === name.toLowerCase() || c.name.toLowerCase() === name.toLowerCase())) {
+      if (!confirm(`Đã có lớp tên “${name}” (hoặc trong mục Lớp đã xoá). Vẫn tạo lớp mới trùng tên?`)) return;
+    }
+    const c = { id: 'c' + uid(), name };
+    CLASSES.push(c);
+    $('#newClassName').value = '';
+    ui.cls = c.id; ui.session = 'all'; saveUI();
+    afterClassChange();
+  }
+  function renameClass(id) {
+    const c = CLASSES.find(x => x.id === id);
+    if (!c) return;
+    const name = prompt('Tên mới cho lớp:', c.name);
+    if (!name || !name.trim()) return;
+    c.name = name.trim();
+    afterClassChange();
+  }
+  function deleteClass(id) {
+    const c = CLASSES.find(x => x.id === id);
+    if (!c) return;
+    const n = classData(id).students.length;
+    if (!confirm(`Xoá lớp “${fullClassName(c)}” (${n} học sinh)?\n\nLớp sẽ được chuyển vào mục “Lớp đã xoá”. Học sinh và điểm vẫn được giữ nguyên, bạn có thể KHÔI PHỤC lại bất cứ lúc nào.`)) return;
+    const pos = CLASSES.findIndex(x => x.id === id);
+    CLASSES = CLASSES.filter(x => x.id !== id);
+    TRASH.unshift(Object.assign({}, c, { deletedAt: Date.now(), pos }));
+    if (ui.cls === id) { ui.cls = CLASSES.length ? CLASSES[0].id : ui.cls; ui.session = 'all'; saveUI(); }
+    afterClassChange();
+  }
+  function restoreClass(id) {
+    const c = TRASH.find(x => x.id === id);
+    if (!c) return;
+    TRASH = TRASH.filter(x => x.id !== id);
+    const back = Object.assign({}, c);
+    delete back.deletedAt;
+    delete back.pos;
+    const pos = Number.isInteger(c.pos) ? Math.min(Math.max(c.pos, 0), CLASSES.length) : CLASSES.length;
+    CLASSES.splice(pos, 0, back);
+    ui.cls = id; ui.session = 'all'; saveUI();
+    afterClassChange();
+  }
+  function moveClass(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= CLASSES.length) return;
+    [CLASSES[i], CLASSES[j]] = [CLASSES[j], CLASSES[i]];
+    afterClassChange();
+  }
+
   /** Sắp xếp học sinh theo tên (chữ cuối), rồi đến họ và tên đệm – theo bảng chữ cái tiếng Việt */
   const viCollator = new Intl.Collator('vi', { sensitivity: 'base', numeric: true });
   function nameKey(full) {
@@ -961,6 +1080,8 @@
       if (!data || typeof data.classes !== 'object') throw new Error('Dữ liệu không đúng định dạng sổ điểm');
       if (!confirm('Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại' + (cloud ? ' (bảng điểm chung của mọi người)' : '') + '. Tiếp tục?')) return false;
       state = data;
+      applyConfig(state.config);
+      if (!CLASSES.some(c => c.id === ui.cls)) ui.cls = CLASSES.length ? CLASSES[0].id : ui.cls;
       saveNow();
       renderAll();
       if (cloud) uploadAll();
@@ -987,6 +1108,11 @@
     if (d.cls) { ui.cls = d.cls; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.sheet) { ui.sheet = d.sheet; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.del) { deleteStudent(d.del); return; }
+    if (d.clsdel) { deleteClass(d.clsdel); return; }
+    if (d.clsren) { renameClass(d.clsren); return; }
+    if (d.clsrestore) { restoreClass(d.clsrestore); return; }
+    if (d.clsup) { moveClass(Number(d.clsup), -1); return; }
+    if (d.clsdown) { moveClass(Number(d.clsdown), 1); return; }
     if (d.delcol) { openDeleteColumn(d.delcol, d.delcolsess); return; }
     if (d.pickall) { t.closest('dialog').querySelectorAll('.pick input').forEach(i => { i.checked = d.pickall === '1'; }); return; }
     if (d.delsess) { deleteSession(d.delsess); return; }
@@ -1017,6 +1143,8 @@
         break;
       }
       case 'sortNames': sortStudents(); break;
+      case 'manageClasses': openClassManager(); break;
+      case 'addClassBtn': addClass(); break;
       case 'bulkAdd': $('#bulkNames').value = ''; $('#bulkDialog').showModal(); break;
       case 'addCol': openAddColumn(); break;
       case 'delCol': openDeleteColumn(); break;
@@ -1066,6 +1194,7 @@
   });
 
   document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id === 'newClassName') { e.preventDefault(); addClass(); return; }
     if (e.key === 'Enter' && e.target.id === 'newStudent') {
       e.preventDefault();
       $('#addStudent').click();
