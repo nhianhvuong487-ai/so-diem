@@ -148,11 +148,11 @@ table.grid { border-collapse: separate; border-spacing: 0; min-width: 100%; }
 .grid td.sticky, .grid tfoot td.sticky { background: #fff; }
 .grid .c-stt { left: 0; width: 3.2em; min-width: 3.2em; }
 .grid .c-name {
-  left: 3.2em; min-width: 14em; text-align: left;
+  left: var(--left-name, 3.2em); min-width: 14em; text-align: left;
   border-right: 2px solid #c4b5fd; box-shadow: 6px 0 10px -8px rgba(76, 29, 149, .35);
 }
 .grid .c-target {
-  left: 17.2em; width: 5.6em; min-width: 5.6em; max-width: 5.6em;
+  left: var(--left-target, 17.2em); width: 5.6em; min-width: 5.6em; max-width: 5.6em;
   border-right: 2px solid #c4b5fd; box-shadow: 6px 0 10px -8px rgba(76, 29, 149, .35);
 }
 .grid tr:has(.c-target) .c-name, .grid thead tr:first-child:has(.c-target) .c-name { box-shadow: none; }
