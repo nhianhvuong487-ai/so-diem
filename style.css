@@ -304,3 +304,17 @@ dialog textarea#backupText, dialog textarea#restoreText { font-family: ui-monosp
 .btn.danger { background: #e11d48; border-color: #e11d48; color: #fff; }
 .legend .hit::before { color: #4ade80; }
 .legend .low::before { color: #fb7185; }
+
+/* Sĩ số lớp */
+.class-tabs .cnt {
+  display: inline-block; min-width: 1.6em; padding: 0 .45em; margin-left: 2px; border-radius: 999px;
+  background: rgba(255,255,255,.28); font-size: .78em; font-weight: 700; line-height: 1.5;
+}
+.class-tabs button.active .cnt { background: #ede9fe; color: #6d28d9; }
+.tabs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.tabs-row .sheet-tabs { margin-bottom: 0; }
+.class-stat {
+  padding: .5em 1em; border-radius: 999px; background: #fff; box-shadow: var(--shadow); font-size: .92em; color: var(--text);
+}
+.class-stat b { color: #6d28d9; }
+@media print { .tabs-row { display: none; } }
