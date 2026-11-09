@@ -437,7 +437,7 @@
 
     $('#hint').innerHTML = def.type === 'sessions'
       ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → khi rời ô sẽ tự hiện <b>điểm /10</b> (bấm lại vào ô để xem/sửa số câu đúng).
-         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì các ô của buổi đó bôi đỏ (cột tên không tô màu). Nút <b>↕ Sắp xếp A→Z</b> xếp theo tên (chữ cuối của họ tên).
+         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì chỉ các ô của buổi đó bôi đỏ. Nút <b>↕ Sắp xếp A→Z</b> xếp theo tên (chữ cuối của họ tên).
          ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên.' : 'Điểm <b>từ 5 trở lên</b> bôi xanh, <b>dưới 5</b> bôi đỏ.'}
          <span class="legend"><span class="hit">${def.target ? 'đạt mục tiêu' : '≥ 5'}</span><span class="low">dưới 5</span><span class="abs">vắng</span></span>`
       : 'Lập kế hoạch học IELTS cho ' + esc(className(ui.cls)) + '. Dữ liệu tự lưu trên trình duyệt này.';
@@ -517,8 +517,6 @@
     }
 
     students.forEach((stu, idx) => {
-      const absentVisible = sessions.some(s => sessionAbsent(sh, stu.id, s.id));
-      const rowAbs = absentVisible ? 'absent' : '';
       h += `<tr data-st="${stu.id}"><td class="sticky c-stt">${idx + 1}</td>`;
       h += `<td class="sticky c-name"><input class="name" data-name="${stu.id}" value="${esc(stu.name)}"></td>`;
       if (hasTarget) h += `<td class="sticky c-target"><input type="text" inputmode="decimal" class="target" data-target="${stu.id}" value="${esc(sh.targets[stu.id] ?? '')}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
@@ -529,10 +527,10 @@
       });
       const avg = studentAvg(sh, stu.id);
       const att = attendance(sh, stu.id);
-      h += `<td class="att sess-start ${rowAbs}" data-att>${hasAttend ? `${att}/${sh.sessions.length}` : '—'}</td>`;
-      h += `<td class="att ${rowAbs}" style="color:var(--bad)">${absences(sh, stu.id) || ''}</td>`;
-      h += `<td class="avg ${rowAbs}" data-avg><span class="conv ${gradeClass(avg)}">${fmt(avg)}</span></td>`;
-      h += `<td class="${rowAbs}"><button class="del" data-del="${stu.id}" title="Xoá học sinh">×</button></td></tr>`;
+      h += `<td class="att sess-start" data-att>${hasAttend ? `${att}/${sh.sessions.length}` : '—'}</td>`;
+      h += `<td class="att" style="color:var(--bad)">${absences(sh, stu.id) || ''}</td>`;
+      h += `<td class="avg" data-avg><span class="conv ${gradeClass(avg)}">${fmt(avg)}</span></td>`;
+      h += `<td><button class="del" data-del="${stu.id}" title="Xoá học sinh">×</button></td></tr>`;
     });
 
     // Dòng ghi chú theo buổi (lớp IELTS)
