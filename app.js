@@ -68,7 +68,163 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { alert('Không lưu được dữ liệu: ' + e.message); }
   }
   function saveUI() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
-  window.addEventListener('beforeunload', saveNow);
+  window.addEventListener('beforeunload', () => { saveNow(); flush(); });
+
+  // ---------- Đồng bộ chung qua Firebase (xem cloud.js) ----------
+  // Firestore: collection "sodiem_classes" (doc = lớp, chứa danh sách HS)
+  //            collection "sodiem_sheets"  (doc = "<lớp>__<sheet>", chứa điểm)
+  const COL_CLASSES = 'sodiem_classes';
+  const COL_SHEETS = 'sodiem_sheets';
+  let cloud = null;
+  const pending = {};      // thay đổi chưa gửi: "col\u0001id" -> [[path, value], ...]
+  const remote = {};       // bản dữ liệu mới nhất từ máy chủ: "col\u0001id" -> object
+  let flushTimer = null;
+  let inflight = 0;
+
+  function clone(o) { return o === undefined ? undefined : JSON.parse(JSON.stringify(o)); }
+  function sheetDocId(cid, sid) { return cid + '__' + sid; }
+  function setPath(obj, path, value, del) {
+    let o = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (!o[path[i]] || typeof o[path[i]] !== 'object' || Array.isArray(o[path[i]])) o[path[i]] = {};
+      o = o[path[i]];
+    }
+    const last = path[path.length - 1];
+    if (value === undefined && !del) delete o[last];
+    else o[last] = value;
+  }
+
+  /** Ghi một thay đổi lên đám mây (value === undefined nghĩa là xoá) */
+  function sync(col, id, path, value) {
+    if (!cloud) return;
+    const k = col + '\u0001' + id;
+    (pending[k] = pending[k] || []).push([path, clone(value)]);
+    setStatus('saving');
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, 400);
+  }
+
+  function flush() {
+    clearTimeout(flushTimer);
+    if (!cloud) return;
+    Object.keys(pending).forEach(k => {
+      const ops = pending[k];
+      delete pending[k];
+      const [col, id] = k.split('\u0001');
+      const patch = {};
+      ops.forEach(([path, value]) => setPath(patch, path, value === undefined ? cloud.DELETE : value, true));
+      inflight++;
+      cloud.write(col, id, patch)
+        .then(() => { inflight--; if (!inflight && !Object.keys(pending).length) setStatus('saved'); })
+        .catch(err => { inflight--; setStatus('error', err); });
+    });
+  }
+
+  /** Dữ liệu máy chủ + các thay đổi mình chưa kịp gửi */
+  function withPending(col, id, data) {
+    const d = clone(data) || {};
+    (pending[col + '\u0001' + id] || []).forEach(([path, value]) => setPath(d, path, value));
+    return d;
+  }
+
+  function studentsFromMap(map) {
+    return Object.entries(map || {})
+      .filter(([, v]) => v && typeof v === 'object')
+      .sort((a, b) => (a[1].order || 0) - (b[1].order || 0) || a[0].localeCompare(b[0]))
+      .map(([id, v]) => ({ id, name: v.name || '', order: v.order || 0 }));
+  }
+
+  function applyDoc(col, id, data) {
+    remote[col + '\u0001' + id] = data;
+    const d = withPending(col, id, data);
+    if (col === COL_CLASSES) {
+      if (!CLASSES.some(c => c.id === id)) return;
+      classData(id).students = studentsFromMap(d.students);
+    } else if (col === COL_SHEETS) {
+      const i = id.lastIndexOf('__');
+      const cid = id.slice(0, i), sid = id.slice(i + 2);
+      if (!CLASSES.some(c => c.id === cid) || !sheetDef(sid)) return;
+      classData(cid).sheets[sid] = d;
+    }
+  }
+
+  function viewSnapshot() {
+    return JSON.stringify([classData(ui.cls).students, sheetData(ui.cls, ui.sheet)]);
+  }
+
+  let remoteRenderTimer = null;
+  function onRemoteDoc(col, id, data) {
+    const before = viewSnapshot();
+    applyDoc(col, id, data);
+    save();
+    if (viewSnapshot() === before) return;
+    clearTimeout(remoteRenderTimer);
+    remoteRenderTimer = setTimeout(() => renderKeepFocus(), 120);
+  }
+
+  function hasLocalData() {
+    return Object.values(state.classes).some(c => (c.students && c.students.length) ||
+      Object.values(c.sheets || {}).some(sh => sh.rows && sh.rows.length));
+  }
+
+  /** Đẩy toàn bộ dữ liệu trên máy này lên đám mây (lần đầu, hoặc khi khôi phục) */
+  function uploadAll() {
+    const jobs = [];
+    Object.keys(state.classes).forEach(cid => {
+      if (!CLASSES.some(c => c.id === cid)) return;
+      const c = classData(cid);
+      const map = {};
+      c.students.forEach((s, i) => { map[s.id] = { name: s.name, order: s.order || i + 1 }; });
+      jobs.push(cloud.replace(COL_CLASSES, cid, { students: map }));
+      Object.keys(c.sheets).forEach(sid => {
+        if (!sheetDef(sid)) return;
+        jobs.push(cloud.replace(COL_SHEETS, sheetDocId(cid, sid), clone(sheetData(cid, sid))));
+      });
+    });
+    setStatus('saving');
+    return Promise.all(jobs).then(() => setStatus('saved'), err => setStatus('error', err));
+  }
+
+  function setStatus(kind, err) {
+    const el = document.getElementById('syncStatus');
+    if (!el) return;
+    const map = {
+      local: ['💾 Chỉ lưu trên máy này', 'Chưa kết nối Firebase: điểm chỉ lưu trên trình duyệt này.'],
+      loading: ['⏳ Đang tải dữ liệu chung…', ''],
+      saving: ['⏳ Đang lưu…', ''],
+      saved: ['☁️ Đã lưu chung', 'Mọi người mở link đều thấy và sửa được cùng một bảng điểm.'],
+      error: ['⚠️ Lỗi đồng bộ', 'Không lưu được lên máy chủ: ' + (err && err.message ? err.message : err)],
+    };
+    const [text, title] = map[kind] || map.local;
+    el.textContent = text;
+    el.title = title;
+    el.className = 'sync ' + kind;
+    if (kind === 'error') console.error('Lỗi đồng bộ:', err);
+  }
+
+  /** cloud.js gọi hàm này khi đã kết nối Firebase */
+  async function connectCloud(adapter) {
+    cloud = adapter;
+    setStatus('loading');
+    try {
+      const all = await adapter.loadAll([COL_CLASSES, COL_SHEETS]);
+      const empty = !all[COL_CLASSES].length && !all[COL_SHEETS].length;
+      if (empty && hasLocalData()) {
+        await uploadAll();
+      } else {
+        state = { classes: {} };
+        all[COL_CLASSES].forEach(d => applyDoc(COL_CLASSES, d.id, d.data));
+        all[COL_SHEETS].forEach(d => applyDoc(COL_SHEETS, d.id, d.data));
+        saveNow();
+        renderAll();
+      }
+      setStatus('saved');
+      adapter.subscribe([COL_CLASSES, COL_SHEETS], onRemoteDoc, err => setStatus('error', err));
+    } catch (err) {
+      setStatus('error', err);
+    }
+  }
+  window.SoDiem = { connectCloud, setStatus };
 
   function classData(cid) {
     if (!state.classes[cid]) state.classes[cid] = { students: [], sheets: {} };
@@ -479,10 +635,43 @@
     renderContent();
   }
 
+  /** Vẽ lại khi người khác sửa, giữ nguyên ô đang nhập của mình */
+  const FOCUS_ATTRS = ['data-cell', 'data-total', 'data-name', 'data-target', 'data-plan', 'data-attcell'];
+  function renderKeepFocus() {
+    const a = document.activeElement;
+    let keep = null;
+    if (a && $('#content').contains(a)) {
+      const attr = FOCUS_ATTRS.find(x => a.hasAttribute(x));
+      const tr = a.closest('tr');
+      if (attr) {
+        keep = { attr, val: a.getAttribute(attr), st: tr && tr.dataset.st, row: tr && tr.dataset.row, value: a.value, type: a.type };
+        try { keep.s = a.selectionStart; keep.e = a.selectionEnd; } catch (e) { /* number input */ }
+      }
+    }
+    const sh = sheetData(ui.cls, ui.sheet);
+    const sessCount = $('#sessionFilter') ? $('#sessionFilter').options.length : -1;
+    if (sh.sessions && sessCount !== sh.sessions.length + 1 && !$('#toolbar').contains(a)) renderToolbar();
+    renderContent();
+    if (!keep) return;
+    let scope = '#content ';
+    if (keep.st) scope += `tr[data-st="${CSS.escape(keep.st)}"] `;
+    else if (keep.row !== undefined) scope += `tr[data-row="${CSS.escape(keep.row)}"] `;
+    const el = document.querySelector(`${scope}[${keep.attr}="${CSS.escape(keep.val)}"]`);
+    if (!el) return;
+    el.focus();
+    if (keep.type !== 'checkbox' && el.tagName !== 'BUTTON' && el.tagName !== 'SELECT' && el.value !== keep.value) el.value = keep.value;
+    if (keep.s != null) { try { el.setSelectionRange(keep.s, keep.e); } catch (e) { /* ignore */ } }
+  }
+
   // ---------- Hành động ----------
   function addStudents(names) {
     const c = classData(ui.cls);
-    names.map(x => x.trim()).filter(Boolean).forEach(name => c.students.push({ id: uid(), name }));
+    const base = Math.max(Date.now(), ...c.students.map(s => (s.order || 0) + 1));
+    names.map(x => x.trim()).filter(Boolean).forEach((name, i) => {
+      const st = { id: uid(), name, order: base + i };
+      c.students.push(st);
+      sync(COL_CLASSES, ui.cls, ['students', st.id], { name, order: st.order });
+    });
     save();
     renderContent();
   }
@@ -494,6 +683,11 @@
     if (!confirm(`Xoá học sinh “${st.name}” và toàn bộ điểm của em ở tất cả các sheet?`)) return;
     c.students = c.students.filter(s => s.id !== id);
     Object.values(c.sheets).forEach(sh => { if (sh.data) delete sh.data[id]; if (sh.targets) delete sh.targets[id]; });
+    sync(COL_CLASSES, ui.cls, ['students', id], undefined);
+    SHEETS.filter(d => d.type === 'sessions').forEach(d => {
+      sync(COL_SHEETS, sheetDocId(ui.cls, d.id), ['data', id], undefined);
+      if (d.target) sync(COL_SHEETS, sheetDocId(ui.cls, d.id), ['targets', id], undefined);
+    });
     save();
     renderContent();
   }
@@ -501,6 +695,8 @@
   function addColumn(label, type) {
     const sh = sheetData(ui.cls, ui.sheet);
     sh.cols.push({ key: 'c' + uid(), label, type });
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
     save();
     renderContent();
   }
@@ -513,6 +709,8 @@
     sh.cols = sh.cols.filter(c => c.key !== key);
     Object.values(sh.data).forEach(byS => Object.values(byS).forEach(cells => { delete cells[key]; }));
     Object.values(sh.totals).forEach(t => { delete t[key]; });
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
     save();
     renderContent();
   }
@@ -522,12 +720,14 @@
     const col = sh.cols.find(c => c.key === key);
     if (!col) return;
     const name = prompt('Tên mới cho cột:', col.label);
-    if (name && name.trim()) { col.label = name.trim(); save(); renderContent(); }
+    if (name && name.trim()) { col.label = name.trim(); sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols); save(); renderContent(); }
   }
 
   function addSession() {
     const sh = sheetData(ui.cls, ui.sheet);
     sh.sessions.push({ id: 's' + uid() });
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
     save();
     renderToolbar();
     renderContent();
@@ -540,6 +740,8 @@
     sh.sessions = sh.sessions.filter(s => s.id !== sid);
     Object.values(sh.data).forEach(byS => { delete byS[sid]; });
     delete sh.totals[sid];
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
     if (String(ui.session) === sid) { ui.session = 'all'; saveUI(); }
     save();
     renderToolbar();
@@ -614,6 +816,7 @@
         state = data;
         saveNow();
         renderAll();
+        if (cloud) uploadAll();
         alert('Đã khôi phục dữ liệu.');
       } catch (e) {
         alert('Không đọc được file: ' + e.message);
@@ -647,7 +850,7 @@
     }
     if (d.delrow !== undefined) {
       const sh = sheetData(ui.cls, ui.sheet);
-      if (confirm('Xoá dòng kế hoạch này?')) { sh.rows.splice(Number(d.delrow), 1); save(); renderContent(); }
+      if (confirm('Xoá dòng kế hoạch này?')) { sh.rows.splice(Number(d.delrow), 1); sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['rows'], sh.rows); save(); renderContent(); }
       return;
     }
     switch (t.id) {
@@ -664,6 +867,7 @@
       case 'addPlan': {
         const sh = sheetData(ui.cls, ui.sheet);
         sh.rows.push({ week: String(sh.rows.length + 1), date: '', skill: 'Listening', content: '', material: '', target: '', done: false, note: '' });
+        sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['rows'], sh.rows);
         save();
         renderContent();
         break;
@@ -719,6 +923,7 @@
       const sh = sheetData(ui.cls, ui.sheet);
       const v = num(t.value);
       if (v === null) delete sh.targets[t.dataset.target]; else sh.targets[t.dataset.target] = v;
+      sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['targets', t.dataset.target], v === null ? undefined : v);
       save();
       const tr = t.closest('tr[data-st]');
       tr.querySelectorAll('input[data-cell][type=number]').forEach(inp => {
@@ -729,7 +934,7 @@
     }
     if (t.dataset.name) {
       const st = classData(ui.cls).students.find(s => s.id === t.dataset.name);
-      if (st) { st.name = t.value; save(); }
+      if (st) { st.name = t.value; sync(COL_CLASSES, ui.cls, ['students', st.id, 'name'], st.name); save(); }
       return;
     }
     if (t.dataset.total) {
@@ -738,6 +943,7 @@
       if (!sh.totals[sid]) sh.totals[sid] = {};
       const v = num(t.value);
       if (v === null) delete sh.totals[sid][key]; else sh.totals[sid][key] = v;
+      sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['totals', sid, key], v === null ? undefined : v);
       save();
       document.querySelectorAll('#content tbody tr[data-st]').forEach(tr => { updateScoreCell(tr, sid, key); updateRow(tr); });
       updateFooter();
@@ -754,6 +960,7 @@
     if (!sh.data[stId][sid]) sh.data[stId][sid] = {};
     if (value === null || value === false) delete sh.data[stId][sid][key];
     else sh.data[stId][sid][key] = value;
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['data', stId, sid, key], value === null || value === false ? undefined : value);
     save();
   }
 
@@ -773,6 +980,7 @@
     const f = input.dataset.plan;
     row[f] = input.type === 'checkbox' ? input.checked : input.value;
     if (f === 'done') tr.classList.toggle('done', input.checked);
+    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['rows'], sh.rows);
     save();
   }
 

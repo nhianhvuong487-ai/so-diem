@@ -61,7 +61,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 .class-tabs button:hover { background: rgba(255,255,255,.3); }
 .class-tabs button.active { background: #fff; color: #7c3aed; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
 
-.font-ctrl { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.sync {
+  margin-left: auto; font-size: .82em; font-weight: 600; padding: .35em .9em; border-radius: 999px;
+  background: rgba(255,255,255,.18); white-space: nowrap; cursor: default;
+}
+.sync.saved { background: rgba(16, 185, 129, .9); }
+.sync.error { background: #fff; color: #be123c; }
+.font-ctrl { display: flex; gap: 8px; align-items: center; }
 .font-ctrl label { display: flex; gap: 6px; align-items: center; font-size: .85em; opacity: .95; }
 .font-ctrl select {
   border: 0; border-radius: 999px; padding: .35em .8em; background: rgba(255,255,255,.92); color: var(--text);
@@ -255,7 +261,7 @@ dialog textarea, dialog input, dialog select {
 
 @media (max-width: 720px) {
   .topbar { margin: 8px 8px 0; }
-  .font-ctrl { margin-left: 0; }
+  .font-ctrl, .sync { margin-left: 0; }
   main { padding: 10px 8px 30px; }
   .toolbar input[type=text] { min-width: 0; flex: 1; }
   .grid .c-name { min-width: 9em; }
