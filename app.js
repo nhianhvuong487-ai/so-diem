@@ -12,7 +12,10 @@
     { id: '9.1', name: '9.1', group: 'Lớp 9' },
     { id: '9.2', name: '9.2', group: 'Lớp 9' },
     { id: '9.S', name: '9.S', group: 'Lớp 9' },
-    { id: 'ielts', name: 'Lớp IELTS' },
+    { id: 'ielts', name: 'Lớp IELTS', notes: [
+      { key: 'btvn', label: 'Ghi chú kiểm tra BTVN' },
+      { key: 'ktdg', label: 'Nội dung bài KT đầu giờ' },
+    ] },
   ];
 
   const SHEETS = [
@@ -253,7 +256,7 @@
   // ---------- Tính toán ----------
   function num(v) {
     if (v === '' || v === null || v === undefined || v === true || v === false) return null;
-    const n = Number(v);
+    const n = Number(typeof v === 'string' ? v.trim().replace(',', '.') : v);
     return Number.isFinite(n) ? n : null;
   }
   /** Quy đổi số câu đúng ra điểm /10 dựa trên tổng số câu của bài */
@@ -277,11 +280,16 @@
     return sh.data[stId] && sh.data[stId][sid] ? sh.data[stId][sid][key] : undefined;
   }
   function getTotal(sh, sid, key) { return sh.totals[sid] ? sh.totals[sid][key] : undefined; }
+  /** Các cột hiển thị trong một buổi (cột có thể chỉ áp dụng / bị xoá ở một số buổi) */
+  function colsFor(sh, sid) {
+    return sh.cols.filter(c => (!c.only || c.only.includes(sid)) && !(c.skip || []).includes(sid));
+  }
+  function isMark(c) { return c.type === 'attend' || c.type === 'check'; }
   function attendCol(sh) { return sh.cols.find(c => c.type === 'attend'); }
   function isPresent(v) { return v === true || v === 'v'; }
   function isAbsent(v) { return v === 'x'; }
   function sessionAbsent(sh, stId, sid) {
-    return sh.cols.some(c => c.type === 'attend' && isAbsent(getCell(sh, stId, sid, c.key)));
+    return colsFor(sh, sid).some(c => c.type === 'attend' && isAbsent(getCell(sh, stId, sid, c.key)));
   }
   function attendance(sh, stId) {
     const col = attendCol(sh);
@@ -293,7 +301,7 @@
   }
   function studentAvg(sh, stId) {
     let sum = 0, cnt = 0;
-    sh.sessions.forEach(s => sh.cols.forEach(c => {
+    sh.sessions.forEach(s => colsFor(sh, s.id).forEach(c => {
       if (c.type !== 'score') return;
       const v = toTen(getCell(sh, stId, s.id, c.key), getTotal(sh, s.id, c.key));
       if (v !== null) { sum += v; cnt++; }
@@ -309,13 +317,28 @@
     return { text: fmt(v) + '/10', cls: gradeClass(v) };
   }
 
-  /** Điểm khảo sát: so với điểm mục tiêu – ≥ mục tiêu: xanh, < 5: đỏ, còn lại giữ nguyên */
+  /** Màu ô điểm.
+   *  Sheet có điểm mục tiêu (khảo sát): ≥ mục tiêu xanh, < 5 đỏ, còn lại giữ nguyên.
+   *  Sheet khác: ≥ 5 xanh, < 5 đỏ. */
   function targetClass(sh, stId, score, col) {
-    if (!sh.targets || score === null || score === undefined) return '';
+    if (score === null || score === undefined) return '';
+    if (!sh.targets) return score >= 5 ? 'tgt-hit' : 'tgt-low';
     const tg = num(sh.targets[stId]);
     if (tg !== null && score >= tg && !(col && col.noTarget)) return 'tgt-hit';
     if (score < 5) return 'tgt-low';
     return '';
+  }
+  /** Nội dung hiển thị trong ô điểm khi không gõ: điểm /10 (hoặc số câu đúng nếu chưa có tổng) */
+  function scoreDisplay(v, t) {
+    const sc = toTen(v, t);
+    if (sc !== null) return fmt(sc);
+    return num(v) === null ? '' : fmt(num(v));
+  }
+  function scoreTitle(v, t, label) {
+    const c = num(v), tt = num(t);
+    if (c === null) return `${label}: nhập số câu đúng`;
+    if (tt === null || tt <= 0) return `${label}: ${fmt(c)} câu đúng – chưa nhập tổng số câu`;
+    return `${label}: ${fmt(c)}/${fmt(tt)} câu đúng = ${fmt(toTen(c, tt))} điểm`;
   }
 
   // ---------- Helpers ----------
@@ -394,6 +417,7 @@
         <button class="btn primary" id="addStudent">+ Thêm HS</button>
         <button class="btn" id="bulkAdd">Dán danh sách</button>
         <button class="btn soft" id="addCol">+ Thêm cột</button>
+        <button class="btn soft" id="delCol">− Xoá cột</button>
         <button class="btn soft" id="addSession">+ Thêm buổi</button>
         <select id="sessionFilter" title="Lọc buổi">
           <option value="all">Hiện tất cả ${sh.sessions.length} buổi</option>
@@ -411,11 +435,10 @@
     if (def.type === 'sessions') $('#sessionFilter').value = String(ui.session);
 
     $('#hint').innerHTML = def.type === 'sessions'
-      ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → tự quy đổi <b>/10</b>.
-         Điểm danh: bấm 1 lần = <b>✓ có mặt</b>, 2 lần = <b>✗ vắng</b> (cả dòng bôi đỏ), 3 lần = xoá.
-         Bấm nút <b>×</b> trên tiêu đề để xoá cột / xoá buổi; bấm đúp tên cột để đổi tên.
-         ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên. ' : ''}
-         <span class="legend">${def.target ? '<span class="hit">đạt mục tiêu</span><span class="low">dưới 5</span>' : ''}<span class="good">≥8</span><span class="ok">6,5–8</span><span class="mid">5–6,5</span><span class="bad">&lt;5</span><span class="abs">vắng</span></span>`
+      ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → khi rời ô sẽ tự hiện <b>điểm /10</b> (bấm lại vào ô để xem/sửa số câu đúng).
+         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì cả dòng bôi đỏ.
+         ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên.' : 'Điểm <b>từ 5 trở lên</b> bôi xanh, <b>dưới 5</b> bôi đỏ.'}
+         <span class="legend"><span class="hit">${def.target ? 'đạt mục tiêu' : '≥ 5'}</span><span class="low">dưới 5</span><span class="abs">vắng</span></span>`
       : 'Lập kế hoạch học IELTS cho ' + esc(className(ui.cls)) + '. Dữ liệu tự lưu trên trình duyệt này.';
   }
 
@@ -431,67 +454,65 @@
   function cellHTML(sh, stId, sid, c, extraCls, style) {
     const v = getCell(sh, stId, sid, c.key);
     const ref = `${sid}|${c.key}`;
-    const title = `${esc(c.label)} – ${sessionLabel(sh, sid)}`;
-    switch (c.type) {
-      case 'attend': {
-        const cls = isPresent(v) ? 'present' : isAbsent(v) ? 'absent' : '';
-        const txt = isPresent(v) ? '✓' : isAbsent(v) ? '✗' : '';
-        return `<td class="chk ${extraCls}" ${style}><button class="att-btn ${cls}" data-attcell="${ref}" title="${title}: bấm để đổi ✓ / ✗">${txt}</button></td>`;
-      }
-      case 'check':
-        return `<td class="chk ${extraCls}" ${style}><input type="checkbox" data-cell="${ref}" ${v ? 'checked' : ''} title="${title}"></td>`;
-      case 'text':
-        return `<td class="text ${extraCls}" ${style}><input type="text" data-cell="${ref}" value="${esc(v ?? '')}" title="${title}"></td>`;
-      default: {
-        const t = getTotal(sh, sid, c.key);
-        const cv = convInfo(v, t);
-        const over = num(v) !== null && num(t) !== null && num(v) > num(t);
-        const tc = targetClass(sh, stId, toTen(v, t), c);
-        return `<td class="score ${extraCls} ${tc}" ${style}><div class="cell"><input type="number" min="0" step="any" data-cell="${ref}" value="${v ?? ''}" class="${over ? 'over' : ''}" placeholder="đúng" title="Số câu đúng – ${title}"><span class="conv ${cv.cls}" data-conv="${ref}">${cv.text}</span></div></td>`;
-      }
+    const title = `${esc(c.label)} – ${esc(sessionLabel(sh, sid))}`;
+    if (isMark(c)) {
+      const cls = isPresent(v) ? 'present' : isAbsent(v) ? 'absent' : '';
+      const txt = isPresent(v) ? '✓' : isAbsent(v) ? '✗' : '';
+      const tint = c.type === 'check' ? (isPresent(v) ? 'mark-yes' : isAbsent(v) ? 'mark-no' : '') : '';
+      return `<td class="chk ${extraCls} ${tint}" ${style}><button class="att-btn ${cls}" data-attcell="${ref}" title="${title}: bấm để đổi ✓ / ✗">${txt}</button></td>`;
     }
+    if (c.type === 'text') {
+      return `<td class="text ${extraCls}" ${style}><input type="text" data-cell="${ref}" value="${esc(v ?? '')}" title="${title}"></td>`;
+    }
+    const t = getTotal(sh, sid, c.key);
+    const over = num(v) !== null && num(t) !== null && num(v) > num(t);
+    const noTotal = num(v) !== null && (num(t) === null || num(t) <= 0);
+    const tc = targetClass(sh, stId, toTen(v, t), c);
+    return `<td class="score ${extraCls} ${tc}" ${style}><input type="text" inputmode="decimal" class="score-in ${over ? 'over' : ''} ${noTotal ? 'nototal' : ''}" data-cell="${ref}" data-kind="score" value="${esc(scoreDisplay(v, t))}" placeholder="–" title="${esc(scoreTitle(v, t, c.label + ' – ' + sessionLabel(sh, sid)))}"></td>`;
   }
 
   function renderSessions() {
     const sh = sheetData(ui.cls, ui.sheet);
     const students = classData(ui.cls).students;
     const sessions = visibleSessions(sh);
-    const cols = sh.cols;
-    const n = Math.max(cols.length, 1);
     const hasAttend = !!attendCol(sh);
     const st = s => `style="--h:${hueOf(sh, s.id)}"`;
     const hasTarget = !!sheetDef(ui.sheet).target;
     const lead = hasTarget ? 3 : 2;
+    const cf = {};
+    sessions.forEach(s => { cf[s.id] = colsFor(sh, s.id); });
+    const width = sessions.reduce((a, s) => a + Math.max(cf[s.id].length, 1), 0);
+    const notes = ui.sheet === 'trenlop' ? (CLASSES.find(c => c.id === ui.cls).notes || []) : [];
 
     let h = `<h2 class="print-title">${esc(className(ui.cls))} – ${esc(sheetDef(ui.sheet).name)}</h2>`;
     h += '<table class="grid"><thead><tr>';
     h += '<th rowspan="2" class="sticky c-stt">STT</th><th rowspan="2" class="sticky c-name">Họ và tên</th>';
     if (hasTarget) h += '<th rowspan="2" class="sticky c-target">Điểm<br>mục tiêu<br>(/10)</th>';
     sessions.forEach(s => {
-      h += `<th colspan="${n}" class="sh sess-start" ${st(s)}>${esc(sessionLabel(sh, s.id))} <button class="sess-del" data-delsess="${esc(s.id)}" title="Xoá ${esc(sessionLabel(sh, s.id))}">×</button>${s.name ? '' : `<div><input type="date" class="sdate" data-sdate="${esc(s.id)}" value="${esc(s.date || '')}" title="Ngày học"></div>`}</th>`;
+      h += `<th colspan="${Math.max(cf[s.id].length, 1)}" class="sh sess-start" ${st(s)}>${esc(sessionLabel(sh, s.id))} <button class="sess-del" data-delsess="${esc(s.id)}" title="Xoá ${esc(sessionLabel(sh, s.id))}">×</button>${s.name ? '' : `<div><input type="date" class="sdate" data-sdate="${esc(s.id)}" value="${esc(s.date || '')}" title="Ngày học"></div>`}</th>`;
     });
     h += '<th rowspan="3" class="sess-start">Tổng số<br>buổi đi học</th><th rowspan="3">Số buổi<br>vắng</th><th rowspan="3">Điểm TB<br>(/10)</th><th rowspan="3"></th></tr><tr>';
     sessions.forEach(s => {
-      if (!cols.length) { h += `<th class="sub ss sess-start" ${st(s)}>(chưa có cột)</th>`; return; }
-      cols.forEach((c, i) => {
-        h += `<th class="sub ss ${i === 0 ? 'sess-start' : ''}" ${st(s)}><span class="lbl" data-rencol="${esc(c.key)}" title="Bấm đúp để đổi tên">${esc(c.label)}</span><button class="col-del" data-delcol="${esc(c.key)}" title="Xoá cột “${esc(c.label)}”">×</button></th>`;
+      if (!cf[s.id].length) { h += `<th class="sub ss sess-start" ${st(s)}>(chưa có cột)</th>`; return; }
+      cf[s.id].forEach((c, i) => {
+        h += `<th class="sub ss ${i === 0 ? 'sess-start' : ''}" ${st(s)}><span class="lbl" data-rencol="${esc(c.key)}" title="Bấm đúp để đổi tên">${esc(c.label)}</span><button class="col-del" data-delcol="${esc(c.key)}" data-delcolsess="${esc(s.id)}" title="Xoá cột “${esc(c.label)}”">×</button></th>`;
       });
     });
     h += `</tr><tr class="totals-row"><th colspan="${lead}" class="sticky c-stt" style="text-align:right">Tổng số câu →</th>`;
     sessions.forEach(s => {
-      if (!cols.length) { h += `<th class="sc sess-start" ${st(s)}></th>`; return; }
-      cols.forEach((c, i) => {
+      if (!cf[s.id].length) { h += `<th class="sc sess-start" ${st(s)}></th>`; return; }
+      cf[s.id].forEach((c, i) => {
         const cls = `sc ${i === 0 ? 'sess-start' : ''}`;
         if (c.type === 'score') {
           const t = getTotal(sh, s.id, c.key);
-          h += `<th class="${cls}" ${st(s)}><input type="number" class="total" min="1" step="1" data-total="${esc(s.id)}|${esc(c.key)}" value="${t ?? ''}" placeholder="tổng" title="Tổng số câu – ${esc(c.label)} – ${sessionLabel(sh, s.id)}"></th>`;
+          h += `<th class="${cls}" ${st(s)}><input type="text" inputmode="decimal" class="total" data-total="${esc(s.id)}|${esc(c.key)}" value="${esc(t ?? '')}" placeholder="tổng" title="Tổng số câu – ${esc(c.label)} – ${esc(sessionLabel(sh, s.id))}"></th>`;
         } else h += `<th class="${cls}" ${st(s)}></th>`;
       });
     });
     h += '</tr></thead><tbody>';
 
     if (!students.length) {
-      h += `<tr><td class="empty" colspan="${lead + sessions.length * n + 4}">Chưa có học sinh. Hãy thêm học sinh ở thanh công cụ phía trên.</td></tr>`;
+      h += `<tr><td class="empty" colspan="${lead + width + 4}">Chưa có học sinh. Hãy thêm học sinh ở thanh công cụ phía trên.</td></tr>`;
     }
 
     students.forEach((stu, idx) => {
@@ -499,11 +520,11 @@
       const rowAbs = absentVisible ? 'absent' : '';
       h += `<tr data-st="${stu.id}"><td class="sticky c-stt ${rowAbs}">${idx + 1}</td>`;
       h += `<td class="sticky c-name ${rowAbs}"><input class="name" data-name="${stu.id}" value="${esc(stu.name)}"></td>`;
-      if (hasTarget) h += `<td class="sticky c-target ${rowAbs}"><input type="number" class="target" min="0" max="10" step="0.1" data-target="${stu.id}" value="${sh.targets[stu.id] ?? ''}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
+      if (hasTarget) h += `<td class="sticky c-target ${rowAbs}"><input type="text" inputmode="decimal" class="target" data-target="${stu.id}" value="${esc(sh.targets[stu.id] ?? '')}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
       sessions.forEach(s => {
         const abs = sessionAbsent(sh, stu.id, s.id) ? 'absent' : '';
-        if (!cols.length) { h += `<td class="sc sess-start ${abs}" ${st(s)}></td>`; return; }
-        cols.forEach((c, i) => { h += cellHTML(sh, stu.id, s.id, c, `sc ${i === 0 ? 'sess-start' : ''} ${abs}`, st(s)); });
+        if (!cf[s.id].length) { h += `<td class="sc sess-start ${abs}" ${st(s)}></td>`; return; }
+        cf[s.id].forEach((c, i) => { h += cellHTML(sh, stu.id, s.id, c, `sc ${i === 0 ? 'sess-start' : ''} ${abs}`, st(s)); });
       });
       const avg = studentAvg(sh, stu.id);
       const att = attendance(sh, stu.id);
@@ -512,13 +533,23 @@
       h += `<td class="avg ${rowAbs}" data-avg><span class="conv ${gradeClass(avg)}">${fmt(avg)}</span></td>`;
       h += `<td class="${rowAbs}"><button class="del" data-del="${stu.id}" title="Xoá học sinh">×</button></td></tr>`;
     });
+
+    // Dòng ghi chú theo buổi (lớp IELTS)
+    notes.forEach(nt => {
+      h += `<tr class="note-row"><td colspan="${lead}" class="sticky c-stt note-lbl">${esc(nt.label)}</td>`;
+      sessions.forEach(s => {
+        const val = sh.notes && sh.notes[s.id] ? sh.notes[s.id][nt.key] : '';
+        h += `<td colspan="${Math.max(cf[s.id].length, 1)}" class="sc sess-start note-cell" ${st(s)}><textarea data-note="${esc(s.id)}|${esc(nt.key)}" rows="3" placeholder="${esc(nt.label)} – ${esc(sessionLabel(sh, s.id))}">${esc(val || '')}</textarea></td>`;
+      });
+      h += '<td colspan="4" class="sess-start"></td></tr>';
+    });
     h += '</tbody>';
 
     if (students.length) {
       h += `<tfoot><tr><td colspan="${lead}" class="sticky c-stt" style="text-align:right">TB lớp / Có mặt</td>`;
       sessions.forEach(s => {
-        if (!cols.length) { h += `<td class="sc sess-start" ${st(s)}></td>`; return; }
-        cols.forEach((c, i) => {
+        if (!cf[s.id].length) { h += `<td class="sc sess-start" ${st(s)}></td>`; return; }
+        cf[s.id].forEach((c, i) => {
           h += `<td class="sc ${i === 0 ? 'sess-start' : ''}" ${st(s)} data-foot="${esc(s.id)}|${esc(c.key)}"></td>`;
         });
       });
@@ -570,8 +601,9 @@
         const abs = students.filter(st => isAbsent(getCell(sh, st.id, sid, key))).length;
         td.innerHTML = (cnt || abs) ? `${cnt}/${students.length}${abs ? ` <span style="color:var(--bad)">✗${abs}</span>` : ''}` : '';
       } else if (col.type === 'check') {
-        const cnt = students.filter(st => getCell(sh, st.id, sid, key)).length;
-        td.textContent = cnt ? `${cnt}/${students.length}` : '';
+        const yes = students.filter(st => isPresent(getCell(sh, st.id, sid, key))).length;
+        const no = students.filter(st => isAbsent(getCell(sh, st.id, sid, key))).length;
+        td.innerHTML = (yes || no) ? `✓${yes}${no ? ` <span style="color:var(--bad)">✗${no}</span>` : ''}` : '';
       } else if (col.type === 'score') {
         const vals = students.map(st => toTen(getCell(sh, st.id, sid, key), getTotal(sh, sid, key))).filter(v => v !== null);
         const a = vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : null;
@@ -593,16 +625,16 @@
     const sh = sheetData(ui.cls, ui.sheet);
     const v = getCell(sh, tr.dataset.st, sid, key);
     const t = getTotal(sh, sid, key);
-    const span = tr.querySelector(`[data-conv="${CSS.escape(sid + '|' + key)}"]`);
     const input = tr.querySelector(`input[data-cell="${CSS.escape(sid + '|' + key)}"]`);
-    if (!span || !input) return;
-    const cv = convInfo(v, t);
-    span.className = 'conv ' + cv.cls;
-    span.textContent = cv.text;
+    if (!input) return;
+    const col = sh.cols.find(c => c.key === key);
+    if (document.activeElement !== input) input.value = scoreDisplay(v, t);
+    input.title = scoreTitle(v, t, (col ? col.label : '') + ' – ' + sessionLabel(sh, sid));
     input.classList.toggle('over', num(v) !== null && num(t) !== null && num(v) > num(t));
+    input.classList.toggle('nototal', num(v) !== null && (num(t) === null || num(t) <= 0));
     const td = input.closest('td');
     td.classList.remove('tgt-hit', 'tgt-low');
-    const tc = targetClass(sh, tr.dataset.st, toTen(v, t), sh.cols.find(c => c.key === key));
+    const tc = targetClass(sh, tr.dataset.st, toTen(v, t), col);
     if (tc) td.classList.add(tc);
   }
 
@@ -639,7 +671,7 @@
   }
 
   /** Vẽ lại khi người khác sửa, giữ nguyên ô đang nhập của mình */
-  const FOCUS_ATTRS = ['data-cell', 'data-total', 'data-name', 'data-target', 'data-plan', 'data-attcell', 'data-sdate'];
+  const FOCUS_ATTRS = ['data-cell', 'data-total', 'data-name', 'data-target', 'data-plan', 'data-attcell', 'data-sdate', 'data-note'];
   function renderKeepFocus() {
     const a = document.activeElement;
     let keep = null;
@@ -695,25 +727,74 @@
     renderContent();
   }
 
-  function addColumn(label, type) {
-    const sh = sheetData(ui.cls, ui.sheet);
-    sh.cols.push({ key: 'c' + uid(), label, type });
+  function syncColsSessions(sh) {
     sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
     sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
+  }
+
+  /** Ô chọn buổi trong hộp thoại thêm / xoá cột */
+  function sessionPicker(box, checkedIds) {
+    const sh = sheetData(ui.cls, ui.sheet);
+    box.innerHTML = sh.sessions.map(s => `<label class="pick" style="--h:${hueOf(sh, s.id)}"><input type="checkbox" value="${esc(s.id)}" ${checkedIds.includes(s.id) ? 'checked' : ''}> ${esc(sessionLabel(sh, s.id))}</label>`).join('') +
+      '<span class="pick-all"><button type="button" class="btn" data-pickall="1">Chọn tất cả</button><button type="button" class="btn" data-pickall="0">Bỏ chọn</button></span>';
+  }
+  function pickedSessions(box) { return [...box.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value); }
+
+  function openAddColumn() {
+    const sh = sheetData(ui.cls, ui.sheet);
+    $('#colName').value = '';
+    $('#colType').value = 'score';
+    sessionPicker($('#colSessions'), sh.sessions.map(s => s.id));
+    $('#colDialog').showModal();
+  }
+
+  function addColumn(label, type, sids) {
+    const sh = sheetData(ui.cls, ui.sheet);
+    if (!sids.length) { alert('Hãy chọn ít nhất một buổi.'); return; }
+    const col = { key: 'c' + uid(), label, type };
+    if (sids.length < sh.sessions.length) col.only = sids;
+    sh.cols.push(col);
+    syncColsSessions(sh);
     save();
     renderContent();
   }
 
-  function deleteColumn(key) {
+  function openDeleteColumn(key, sid) {
+    const sh = sheetData(ui.cls, ui.sheet);
+    if (!sh.cols.length) { alert('Không còn cột nào để xoá.'); return; }
+    $('#delColSel').innerHTML = sh.cols.map(c => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('');
+    if (key) $('#delColSel').value = key;
+    sessionPicker($('#delColSessions'), sid ? [sid] : sh.sessions.map(s => s.id));
+    $('#delColDialog').showModal();
+  }
+
+  /** Xoá cột khỏi các buổi đã chọn; chọn tất cả các buổi thì xoá hẳn cột */
+  function deleteColumn(key, sids) {
     const sh = sheetData(ui.cls, ui.sheet);
     const col = sh.cols.find(c => c.key === key);
-    if (!col) return;
-    if (!confirm(`Xoá cột “${col.label}” ở tất cả các buổi của ${className(ui.cls)} – ${sheetDef(ui.sheet).name}?\nDữ liệu trong cột này sẽ bị xoá.`)) return;
-    sh.cols = sh.cols.filter(c => c.key !== key);
-    Object.values(sh.data).forEach(byS => Object.values(byS).forEach(cells => { delete cells[key]; }));
-    Object.values(sh.totals).forEach(t => { delete t[key]; });
-    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['cols'], sh.cols);
-    sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
+    if (!col || !sids.length) return;
+    const shown = sh.sessions.map(s => s.id).filter(id => colsFor(sh, id).includes(col));
+    const remain = shown.filter(id => !sids.includes(id));
+    const names = sids.length === sh.sessions.length ? 'tất cả các buổi' : sids.map(id => sessionLabel(sh, id)).join(', ');
+    if (!confirm(`Xoá cột “${col.label}” khỏi ${names}?\nĐiểm trong cột ở các buổi này sẽ bị xoá.`)) return;
+    if (!remain.length) {
+      sh.cols = sh.cols.filter(c => c.key !== key);
+    } else {
+      col.skip = [...new Set([...(col.skip || []), ...sids])];
+    }
+    Object.entries(sh.data).forEach(([stId, byS]) => sids.forEach(sid => {
+      if (byS[sid] && key in byS[sid]) {
+        delete byS[sid][key];
+        sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['data', stId, sid, key], undefined);
+      }
+    }));
+    sids.forEach(sid => {
+      if (sh.totals[sid] && key in sh.totals[sid]) {
+        delete sh.totals[sid][key];
+        sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['totals', sid, key], undefined);
+      }
+    });
+    syncColsSessions(sh);
     save();
     renderContent();
   }
@@ -775,7 +856,7 @@
       const hasTarget = !!def.target;
       const head = ['STT', 'Họ và tên'].concat(hasTarget ? ['Điểm mục tiêu'] : []);
       const totalsRow = ['', 'Tổng số câu'].concat(hasTarget ? [''] : []);
-      sh.sessions.forEach((s, i) => sh.cols.forEach(c => {
+      sh.sessions.forEach(s => colsFor(sh, s.id).forEach(c => {
         head.push(`${sessionLabel(sh, s.id)}${s.date ? ' (' + s.date + ')' : ''} - ${c.label}${c.type === 'score' ? ' (/10)' : ''}`);
         totalsRow.push(c.type === 'score' ? (getTotal(sh, s.id, c.key) ?? '') : '');
       }));
@@ -783,10 +864,10 @@
       rows.push(head, totalsRow);
       students.forEach((st, i) => {
         const r = [i + 1, st.name].concat(hasTarget ? [fmt(num(sh.targets[st.id]))] : []);
-        sh.sessions.forEach(s => sh.cols.forEach(c => {
+        sh.sessions.forEach(s => colsFor(sh, s.id).forEach(c => {
           const v = getCell(sh, st.id, s.id, c.key);
           if (c.type === 'attend') r.push(isPresent(v) ? 'có mặt' : isAbsent(v) ? 'vắng' : '');
-          else if (c.type === 'check') r.push(v ? 'x' : '');
+          else if (c.type === 'check') r.push(isPresent(v) ? '✓' : isAbsent(v) ? '✗' : '');
           else if (c.type === 'text') r.push(v ?? '');
           else r.push(fmt(toTen(v, getTotal(sh, s.id, c.key))));
         }));
@@ -862,10 +943,11 @@
     if (d.cls) { ui.cls = d.cls; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.sheet) { ui.sheet = d.sheet; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.del) { deleteStudent(d.del); return; }
-    if (d.delcol) { deleteColumn(d.delcol); return; }
+    if (d.delcol) { openDeleteColumn(d.delcol, d.delcolsess); return; }
+    if (d.pickall) { t.closest('dialog').querySelectorAll('.pick input').forEach(i => { i.checked = d.pickall === '1'; }); return; }
     if (d.delsess) { deleteSession(d.delsess); return; }
     if (d.attcell) {
-      // Vòng: trống → ✓ có mặt → ✗ vắng → trống
+      // Vòng: trống → ✓ → ✗ → trống (điểm danh, BTVN, chép nghe, chép phạt…)
       const tr = t.closest('tr[data-st]');
       const [sid, key] = d.attcell.split('|');
       const sh = sheetData(ui.cls, ui.sheet);
@@ -891,7 +973,8 @@
         break;
       }
       case 'bulkAdd': $('#bulkNames').value = ''; $('#bulkDialog').showModal(); break;
-      case 'addCol': $('#colName').value = ''; $('#colType').value = 'score'; $('#colDialog').showModal(); break;
+      case 'addCol': openAddColumn(); break;
+      case 'delCol': openDeleteColumn(); break;
       case 'addSession': addSession(); break;
       case 'addPlan': {
         const sh = sheetData(ui.cls, ui.sheet);
@@ -912,6 +995,26 @@
     }
   });
 
+  // Ô điểm: khi bấm vào thì hiện số câu đúng để sửa, khi rời ô thì hiện điểm /10
+  document.addEventListener('focusin', e => {
+    const t = e.target;
+    if (t.dataset && t.dataset.kind === 'score') {
+      const tr = t.closest('tr[data-st]');
+      const [sid, key] = t.dataset.cell.split('|');
+      const v = getCell(sheetData(ui.cls, ui.sheet), tr.dataset.st, sid, key);
+      t.value = num(v) === null ? '' : fmt(num(v));
+      t.select();
+    }
+  });
+  document.addEventListener('focusout', e => {
+    const t = e.target;
+    if (t.dataset && t.dataset.kind === 'score') {
+      const tr = t.closest('tr[data-st]');
+      const [sid, key] = t.dataset.cell.split('|');
+      setTimeout(() => updateScoreCell(tr, sid, key), 0);
+    }
+  });
+
   document.addEventListener('dblclick', e => {
     const lbl = e.target.closest('[data-rencol]');
     if (lbl) renameColumn(lbl.dataset.rencol);
@@ -929,7 +1032,13 @@
   });
   $('#colDialog').addEventListener('close', () => {
     const name = $('#colName').value.trim();
-    if ($('#colDialog').returnValue === 'ok' && name) addColumn(name, $('#colType').value);
+    if ($('#colDialog').returnValue === 'ok' && name) addColumn(name, $('#colType').value, pickedSessions($('#colSessions')));
+  });
+  $('#delColDialog').addEventListener('close', () => {
+    if ($('#delColDialog').returnValue !== 'ok') return;
+    const sids = pickedSessions($('#delColSessions'));
+    if (!sids.length) { alert('Hãy chọn ít nhất một buổi.'); return; }
+    deleteColumn($('#delColSel').value, sids);
   });
 
   $('#importFile').addEventListener('change', e => {
@@ -969,7 +1078,7 @@
       sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['targets', t.dataset.target], v === null ? undefined : v);
       save();
       const tr = t.closest('tr[data-st]');
-      tr.querySelectorAll('input[data-cell][type=number]').forEach(inp => {
+      tr.querySelectorAll('input[data-kind="score"]').forEach(inp => {
         const [sid, key] = inp.dataset.cell.split('|');
         updateScoreCell(tr, sid, key);
       });
@@ -992,8 +1101,18 @@
       updateFooter();
       return;
     }
-    if (t.dataset.cell && t.type === 'number') { setCell(t, num(t.value)); return; }
-    if (t.dataset.cell && t.type === 'text') { setCell(t, t.value === '' ? null : t.value); return; }
+    if (t.dataset.note) {
+      const [sid, key] = t.dataset.note.split('|');
+      const sh = sheetData(ui.cls, ui.sheet);
+      if (!sh.notes) sh.notes = {};
+      if (!sh.notes[sid]) sh.notes[sid] = {};
+      if (t.value) sh.notes[sid][key] = t.value; else delete sh.notes[sid][key];
+      sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['notes', sid, key], t.value || undefined);
+      save();
+      return;
+    }
+    if (t.dataset.kind === 'score') { setCell(t, num(t.value)); return; }
+    if (t.dataset.cell && t.type === 'text' && !t.dataset.kind) { setCell(t, t.value === '' ? null : t.value); return; }
     if (t.dataset.plan && t.type !== 'checkbox' && t.tagName !== 'SELECT' && t.type !== 'date') setPlan(t);
   });
 
@@ -1011,7 +1130,7 @@
     const tr = input.closest('tr[data-st]');
     const [sid, key] = input.dataset.cell.split('|');
     writeCell(tr.dataset.st, sid, key, value);
-    if (input.type === 'number') updateScoreCell(tr, sid, key);
+    if (input.dataset.kind === 'score') updateScoreCell(tr, sid, key);
     updateRow(tr);
     updateFooter();
   }
