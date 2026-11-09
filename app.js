@@ -416,6 +416,7 @@
       html += `<input type="text" id="newStudent" placeholder="Nhập họ tên học sinh rồi Enter">
         <button class="btn primary" id="addStudent">+ Thêm HS</button>
         <button class="btn" id="bulkAdd">Dán danh sách</button>
+        <button class="btn" id="sortNames" title="Sắp xếp theo tên (chữ cuối của họ tên), ví dụ “Thu An” xếp theo “An”">↕ Sắp xếp A→Z</button>
         <button class="btn soft" id="addCol">+ Thêm cột</button>
         <button class="btn soft" id="delCol">− Xoá cột</button>
         <button class="btn soft" id="addSession">+ Thêm buổi</button>
@@ -436,7 +437,7 @@
 
     $('#hint').innerHTML = def.type === 'sessions'
       ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → khi rời ô sẽ tự hiện <b>điểm /10</b> (bấm lại vào ô để xem/sửa số câu đúng).
-         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì cả dòng bôi đỏ.
+         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì các ô của buổi đó bôi đỏ (cột tên không tô màu). Nút <b>↕ Sắp xếp A→Z</b> xếp theo tên (chữ cuối của họ tên).
          ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên.' : 'Điểm <b>từ 5 trở lên</b> bôi xanh, <b>dưới 5</b> bôi đỏ.'}
          <span class="legend"><span class="hit">${def.target ? 'đạt mục tiêu' : '≥ 5'}</span><span class="low">dưới 5</span><span class="abs">vắng</span></span>`
       : 'Lập kế hoạch học IELTS cho ' + esc(className(ui.cls)) + '. Dữ liệu tự lưu trên trình duyệt này.';
@@ -518,9 +519,9 @@
     students.forEach((stu, idx) => {
       const absentVisible = sessions.some(s => sessionAbsent(sh, stu.id, s.id));
       const rowAbs = absentVisible ? 'absent' : '';
-      h += `<tr data-st="${stu.id}"><td class="sticky c-stt ${rowAbs}">${idx + 1}</td>`;
-      h += `<td class="sticky c-name ${rowAbs}"><input class="name" data-name="${stu.id}" value="${esc(stu.name)}"></td>`;
-      if (hasTarget) h += `<td class="sticky c-target ${rowAbs}"><input type="text" inputmode="decimal" class="target" data-target="${stu.id}" value="${esc(sh.targets[stu.id] ?? '')}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
+      h += `<tr data-st="${stu.id}"><td class="sticky c-stt">${idx + 1}</td>`;
+      h += `<td class="sticky c-name"><input class="name" data-name="${stu.id}" value="${esc(stu.name)}"></td>`;
+      if (hasTarget) h += `<td class="sticky c-target"><input type="text" inputmode="decimal" class="target" data-target="${stu.id}" value="${esc(sh.targets[stu.id] ?? '')}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
       sessions.forEach(s => {
         const abs = sessionAbsent(sh, stu.id, s.id) ? 'absent' : '';
         if (!cf[s.id].length) { h += `<td class="sc sess-start ${abs}" ${st(s)}></td>`; return; }
@@ -569,6 +570,14 @@
       thead.dataset.observed = '1';
       headObserver.disconnect();
       thead.querySelectorAll('tr').forEach(tr => headObserver.observe(tr));
+    }
+    // Cột cố định bên trái: đo độ rộng thật để cột điểm mục tiêu luôn nằm sát cột tên
+    const table = document.querySelector('#content table.grid');
+    const stt = document.querySelector('#content thead th.c-stt');
+    const name = document.querySelector('#content thead th.c-name');
+    if (table && stt && name) {
+      table.style.setProperty('--left-name', stt.getBoundingClientRect().width + 'px');
+      table.style.setProperty('--left-target', (stt.getBoundingClientRect().width + name.getBoundingClientRect().width) + 'px');
     }
     let top = 0;
     document.querySelectorAll('#content thead tr').forEach(tr => {
@@ -706,6 +715,28 @@
       const st = { id: uid(), name, order: base + i };
       c.students.push(st);
       sync(COL_CLASSES, ui.cls, ['students', st.id], { name, order: st.order });
+    });
+    save();
+    renderContent();
+  }
+
+  /** Sắp xếp học sinh theo tên (chữ cuối), rồi đến họ và tên đệm – theo bảng chữ cái tiếng Việt */
+  const viCollator = new Intl.Collator('vi', { sensitivity: 'base', numeric: true });
+  function nameKey(full) {
+    const w = String(full || '').trim().split(/\s+/);
+    return { given: w[w.length - 1] || '', rest: w.slice(0, -1).join(' ') };
+  }
+  function sortStudents() {
+    const c = classData(ui.cls);
+    if (c.students.length < 2) return;
+    if (!confirm(`Sắp xếp ${c.students.length} học sinh của ${className(ui.cls)} theo tên A→Z?\n(Ví dụ “Thu An” xếp theo chữ “An”.)`)) return;
+    c.students.sort((a, b) => {
+      const x = nameKey(a.name), y = nameKey(b.name);
+      return viCollator.compare(x.given, y.given) || viCollator.compare(x.rest, y.rest) || viCollator.compare(a.name, b.name);
+    });
+    c.students.forEach((st, i) => {
+      st.order = i + 1;
+      sync(COL_CLASSES, ui.cls, ['students', st.id, 'order'], st.order);
     });
     save();
     renderContent();
@@ -972,6 +1003,7 @@
         inp.focus();
         break;
       }
+      case 'sortNames': sortStudents(); break;
       case 'bulkAdd': $('#bulkNames').value = ''; $('#bulkDialog').showModal(); break;
       case 'addCol': openAddColumn(); break;
       case 'delCol': openDeleteColumn(); break;
