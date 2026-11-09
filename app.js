@@ -391,16 +391,30 @@
         html += `<div class="group"><span class="group-label">${esc(g)}</span>`;
         while (i < CLASSES.length && CLASSES[i].group === g) {
           const x = CLASSES[i];
-          html += `<button data-cls="${esc(x.id)}" class="${x.id === ui.cls ? 'active' : ''}">${esc(x.name)}</button>`;
+          html += `<button data-cls="${esc(x.id)}" class="${x.id === ui.cls ? 'active' : ''}">${esc(x.name)} <span class="cnt" data-cnt="${esc(x.id)}"></span></button>`;
           i++;
         }
         html += '</div>';
       } else {
-        html += `<button data-cls="${esc(c.id)}" class="${c.id === ui.cls ? 'active' : ''}">${esc(c.name)}</button>`;
+        html += `<button data-cls="${esc(c.id)}" class="${c.id === ui.cls ? 'active' : ''}">${esc(c.name)} <span class="cnt" data-cnt="${esc(c.id)}"></span></button>`;
         i++;
       }
     }
     $('#classTabs').innerHTML = html;
+    updateCounts();
+  }
+
+  /** Sĩ số từng lớp: số trên nút lớp + dòng tổng */
+  function updateCounts() {
+    let all = 0;
+    CLASSES.forEach(c => {
+      const n = classData(c.id).students.length;
+      all += n;
+      const el = document.querySelector(`[data-cnt="${CSS.escape(c.id)}"]`);
+      if (el) el.textContent = n;
+    });
+    const stat = document.getElementById('classStat');
+    if (stat) stat.innerHTML = `${esc(className(ui.cls))}: <b>${classData(ui.cls).students.length}</b> học sinh · Tất cả các lớp: <b>${all}</b> học sinh`;
   }
 
   function renderSheetTabs() {
@@ -446,6 +460,7 @@
   function renderContent() {
     const wrap = $('#content');
     const sl = wrap.scrollLeft, st = wrap.scrollTop;
+    updateCounts();
     if (sheetDef(ui.sheet).type === 'sessions') renderSessions();
     else renderPlan();
     wrap.scrollLeft = sl;
