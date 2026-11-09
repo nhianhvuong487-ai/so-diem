@@ -272,3 +272,35 @@ dialog textarea#backupText, dialog textarea#restoreText { font-family: ui-monosp
   .toolbar input[type=text] { min-width: 0; flex: 1; }
   .grid .c-name { min-width: 9em; }
 }
+
+/* ---------- Ô điểm hiện điểm /10 ngay trong ô ---------- */
+.grid td.score input.score-in { width: 4em; font-weight: 700; }
+.grid td.score input.score-in:focus { font-weight: 500; background: #fff; }
+.grid td.score input.score-in.nototal { color: var(--muted); font-style: italic; }
+.grid td.score.tgt-hit input.score-in { color: #047857; }
+.grid td.score.tgt-low input.score-in { color: #be123c; }
+.grid td.chk.mark-yes { background: #d1fae5; }
+.grid td.chk.mark-no { background: #ffe4e6; }
+
+/* Dòng ghi chú theo buổi (lớp IELTS) */
+.grid tr.note-row td { background: #fffdf5; vertical-align: top; }
+.grid tr.note-row td.note-lbl { text-align: right; font-weight: 700; font-size: .85em; white-space: normal; color: #92400e; background: #fff7d6; }
+.grid tr.note-row td.note-cell { padding: 4px; background: hsl(var(--h) 90% 97.5%); }
+.grid tr.note-row textarea {
+  width: 100%; min-width: 12em; resize: vertical; font: inherit; font-size: .85em; padding: .4em .5em;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.85); white-space: pre-wrap;
+}
+
+/* Chọn buổi trong hộp thoại thêm / xoá cột */
+.picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-weight: 500; }
+.picker .pick {
+  display: inline-flex; align-items: center; gap: 4px; padding: .3em .7em; border-radius: 999px; cursor: pointer;
+  background: hsl(var(--h) 85% 92%); font-size: .9em;
+}
+.picker .pick input { width: auto; margin: 0; accent-color: var(--primary); }
+.picker .pick-all { display: inline-flex; gap: 6px; }
+.picker .pick-all .btn { padding: .25em .7em; font-size: .85em; }
+.muted { color: var(--muted); font-weight: 400; font-size: .9em; }
+.btn.danger { background: #e11d48; border-color: #e11d48; color: #fff; }
+.legend .hit::before { color: #4ade80; }
+.legend .low::before { color: #fb7185; }

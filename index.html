@@ -48,18 +48,21 @@
 
   <dialog id="colDialog">
     <form method="dialog">
-      <h3>Thêm cột vào mỗi buổi</h3>
+      <h3>Thêm cột</h3>
       <label class="field">Tên cột
         <input type="text" id="colName" placeholder="VD: Điểm nói" required>
       </label>
       <label class="field">Loại cột
         <select id="colType">
           <option value="score">Điểm (nhập số câu đúng → quy đổi /10)</option>
-          <option value="check">Ô tích</option>
+          <option value="check">Tích ✓ / ✗ (như BTVN, chép nghe)</option>
           <option value="attend">Điểm danh (✓ có mặt / ✗ vắng)</option>
           <option value="text">Ghi chú (chữ)</option>
         </select>
       </label>
+      <div class="field">Áp dụng cho buổi
+        <div class="picker" id="colSessions"></div>
+      </div>
       <div class="dialog-actions">
         <button value="cancel" class="btn" formnovalidate>Huỷ</button>
         <button value="ok" class="btn primary">Thêm cột</button>
@@ -88,6 +91,22 @@
       <button type="button" class="btn" id="restoreFile">Chọn file…</button>
       <button type="button" class="btn primary" id="restorePasteOk">Khôi phục</button>
     </div>
+  </dialog>
+
+  <dialog id="delColDialog">
+    <form method="dialog">
+      <h3>Xoá cột</h3>
+      <label class="field">Cột cần xoá
+        <select id="delColSel"></select>
+      </label>
+      <div class="field">Xoá khỏi buổi <span class="muted">(chọn tất cả = xoá hẳn cột)</span>
+        <div class="picker" id="delColSessions"></div>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn" formnovalidate>Huỷ</button>
+        <button value="ok" class="btn danger">Xoá cột</button>
+      </div>
+    </form>
   </dialog>
 
   <input type="file" id="importFile" accept="application/json" hidden>
