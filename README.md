@@ -21,6 +21,16 @@ Mỗi buổi gồm các cột nhỏ:
 Ở ô của mỗi học sinh, nhập **số câu đúng**. Trang tự tính `điểm = số câu đúng / tổng số câu × 10`
 và tô màu (≥8 xanh lá, 6,5–8 xanh dương, 5–6,5 cam, <5 đỏ).
 
+**Điểm danh:** bấm 1 lần = ✓ có mặt, 2 lần = ✗ vắng, 3 lần = xoá. Học sinh vắng buổi nào thì các ô của buổi đó
+và các ô tên, tổng kết trên dòng của em được bôi đỏ.
+
+**Thêm / xoá cột và buổi:** nút **+ Thêm cột** (chọn loại: điểm, ô tích, điểm danh, ghi chú) và **+ Thêm buổi**.
+Nút **×** trên tiêu đề dùng để xoá cột hoặc xoá buổi. Bấm đúp tên cột để đổi tên.
+Mỗi lớp và mỗi sheet có bộ cột riêng.
+
+**Giao diện:** mỗi buổi một màu. Cột STT, họ tên và các hàng tiêu đề được cố định khi cuộn.
+Font chữ và cỡ chữ chọn ở góc trên bên phải.
+
 ### Sheet "Kế hoạch IELTS"
 Bảng kế hoạch học gồm: tuần, ngày, kỹ năng, nội dung bài học, tài liệu, mục tiêu band, hoàn thành, ghi chú.
 
