@@ -49,7 +49,7 @@
   ];
   const SIZES = [12, 13, 14, 15, 16, 18, 20];
 
-  const SKILLS = ['Listening', 'Reading', 'Writing', 'Speaking', 'Vocabulary', 'Grammar', 'Mock test', 'Khác'];
+  const SKILLS = ['', 'Listening', 'Reading', 'Writing', 'Speaking', 'Vocabulary', 'Grammar', 'Mock test', 'Khác'];
 
   // ---------- State ----------
   let state = load(STORAGE_KEY) || { classes: {} };
@@ -310,10 +310,10 @@
   }
 
   /** Điểm khảo sát: so với điểm mục tiêu – ≥ mục tiêu: xanh, < 5: đỏ, còn lại giữ nguyên */
-  function targetClass(sh, stId, score) {
+  function targetClass(sh, stId, score, col) {
     if (!sh.targets || score === null || score === undefined) return '';
     const tg = num(sh.targets[stId]);
-    if (tg !== null && score >= tg) return 'tgt-hit';
+    if (tg !== null && score >= tg && !(col && col.noTarget)) return 'tgt-hit';
     if (score < 5) return 'tgt-low';
     return '';
   }
@@ -327,7 +327,10 @@
     const c = CLASSES.find(x => x.id === cid);
     return c.group ? 'Lớp ' + c.name : c.name;
   }
-  function sessionLabel(sh, sid) { return 'Buổi ' + (sh.sessions.findIndex(s => s.id === sid) + 1); }
+  function sessionLabel(sh, sid) {
+    const i = sh.sessions.findIndex(s => s.id === sid);
+    return (sh.sessions[i] && sh.sessions[i].name) || 'Buổi ' + (i + 1);
+  }
   function hueOf(sh, sid) {
     const i = sh.sessions.findIndex(s => s.id === sid);
     return SESSION_HUES[(i < 0 ? 0 : i) % SESSION_HUES.length];
@@ -394,7 +397,7 @@
         <button class="btn soft" id="addSession">+ Thêm buổi</button>
         <select id="sessionFilter" title="Lọc buổi">
           <option value="all">Hiện tất cả ${sh.sessions.length} buổi</option>
-          ${sh.sessions.map((s, i) => `<option value="${esc(s.id)}">Chỉ Buổi ${i + 1}</option>`).join('')}
+          ${sh.sessions.map(s => `<option value="${esc(s.id)}">Chỉ ${esc(sessionLabel(sh, s.id))}</option>`).join('')}
         </select>`;
     } else {
       html += `<button class="btn primary" id="addPlan">+ Thêm dòng kế hoạch</button>`;
@@ -443,7 +446,7 @@
         const t = getTotal(sh, sid, c.key);
         const cv = convInfo(v, t);
         const over = num(v) !== null && num(t) !== null && num(v) > num(t);
-        const tc = targetClass(sh, stId, toTen(v, t));
+        const tc = targetClass(sh, stId, toTen(v, t), c);
         return `<td class="score ${extraCls} ${tc}" ${style}><div class="cell"><input type="number" min="0" step="any" data-cell="${ref}" value="${v ?? ''}" class="${over ? 'over' : ''}" placeholder="đúng" title="Số câu đúng – ${title}"><span class="conv ${cv.cls}" data-conv="${ref}">${cv.text}</span></div></td>`;
       }
     }
@@ -465,7 +468,7 @@
     h += '<th rowspan="2" class="sticky c-stt">STT</th><th rowspan="2" class="sticky c-name">Họ và tên</th>';
     if (hasTarget) h += '<th rowspan="2" class="sticky c-target">Điểm<br>mục tiêu<br>(/10)</th>';
     sessions.forEach(s => {
-      h += `<th colspan="${n}" class="sh sess-start" ${st(s)}>${sessionLabel(sh, s.id)} <button class="sess-del" data-delsess="${esc(s.id)}" title="Xoá ${sessionLabel(sh, s.id)}">×</button></th>`;
+      h += `<th colspan="${n}" class="sh sess-start" ${st(s)}>${esc(sessionLabel(sh, s.id))} <button class="sess-del" data-delsess="${esc(s.id)}" title="Xoá ${esc(sessionLabel(sh, s.id))}">×</button>${s.name ? '' : `<div><input type="date" class="sdate" data-sdate="${esc(s.id)}" value="${esc(s.date || '')}" title="Ngày học"></div>`}</th>`;
     });
     h += '<th rowspan="3" class="sess-start">Tổng số<br>buổi đi học</th><th rowspan="3">Số buổi<br>vắng</th><th rowspan="3">Điểm TB<br>(/10)</th><th rowspan="3"></th></tr><tr>';
     sessions.forEach(s => {
@@ -599,7 +602,7 @@
     input.classList.toggle('over', num(v) !== null && num(t) !== null && num(v) > num(t));
     const td = input.closest('td');
     td.classList.remove('tgt-hit', 'tgt-low');
-    const tc = targetClass(sh, tr.dataset.st, toTen(v, t));
+    const tc = targetClass(sh, tr.dataset.st, toTen(v, t), sh.cols.find(c => c.key === key));
     if (tc) td.classList.add(tc);
   }
 
@@ -636,7 +639,7 @@
   }
 
   /** Vẽ lại khi người khác sửa, giữ nguyên ô đang nhập của mình */
-  const FOCUS_ATTRS = ['data-cell', 'data-total', 'data-name', 'data-target', 'data-plan', 'data-attcell'];
+  const FOCUS_ATTRS = ['data-cell', 'data-total', 'data-name', 'data-target', 'data-plan', 'data-attcell', 'data-sdate'];
   function renderKeepFocus() {
     const a = document.activeElement;
     let keep = null;
@@ -773,7 +776,7 @@
       const head = ['STT', 'Họ và tên'].concat(hasTarget ? ['Điểm mục tiêu'] : []);
       const totalsRow = ['', 'Tổng số câu'].concat(hasTarget ? [''] : []);
       sh.sessions.forEach((s, i) => sh.cols.forEach(c => {
-        head.push(`Buổi ${i + 1} - ${c.label}${c.type === 'score' ? ' (/10)' : ''}`);
+        head.push(`${sessionLabel(sh, s.id)}${s.date ? ' (' + s.date + ')' : ''} - ${c.label}${c.type === 'score' ? ' (/10)' : ''}`);
         totalsRow.push(c.type === 'score' ? (getTotal(sh, s.id, c.key) ?? '') : '');
       }));
       head.push('Tổng số buổi đi học', 'Số buổi vắng', 'Điểm TB (/10)');
@@ -943,6 +946,16 @@
   document.addEventListener('change', e => {
     const t = e.target;
     if (t.id === 'sessionFilter') { ui.session = t.value; saveUI(); renderContent(); return; }
+    if (t.dataset.sdate) {
+      const sh = sheetData(ui.cls, ui.sheet);
+      const ses = sh.sessions.find(x => x.id === t.dataset.sdate);
+      if (ses) {
+        if (t.value) ses.date = t.value; else delete ses.date;
+        sync(COL_SHEETS, sheetDocId(ui.cls, ui.sheet), ['sessions'], sh.sessions);
+        save();
+      }
+      return;
+    }
     if (t.type === 'checkbox' && t.dataset.cell) { setCell(t, t.checked); return; }
     if (t.dataset.plan && (t.type === 'checkbox' || t.tagName === 'SELECT' || t.type === 'date')) setPlan(t);
   });
