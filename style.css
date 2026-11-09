@@ -246,6 +246,8 @@ dialog textarea, dialog input, dialog select {
   width: 100%; padding: .6em .8em; border: 1px solid var(--border); border-radius: 14px; margin-top: 4px;
 }
 .field { display: block; margin-bottom: 12px; font-weight: 600; font-size: .92em; }
+dialog textarea#backupText, dialog textarea#restoreText { font-family: ui-monospace, monospace; font-size: .8em; }
+.dialog-msg { font-size: .9em; color: #047857; min-height: 1em; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* ---------- Print ---------- */

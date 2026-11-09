@@ -67,6 +67,29 @@
     </form>
   </dialog>
 
+  <dialog id="backupDialog">
+    <h3>Sao lưu dữ liệu</h3>
+    <p>Toàn bộ điểm của mọi lớp nằm trong ô dưới. Bấm <b>Sao chép</b> rồi dán vào mục <b>Khôi phục</b> ở web khác, hoặc tải về thành file.</p>
+    <textarea id="backupText" rows="8" readonly></textarea>
+    <p id="backupMsg" class="dialog-msg"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close="1">Đóng</button>
+      <button type="button" class="btn" id="fileBackup">Tải file</button>
+      <button type="button" class="btn primary" id="copyBackup">Sao chép</button>
+    </div>
+  </dialog>
+
+  <dialog id="restoreDialog">
+    <h3>Khôi phục dữ liệu</h3>
+    <p>Dán dữ liệu đã sao chép từ nút <b>Sao lưu</b> vào ô dưới, hoặc chọn file sao lưu. Dữ liệu hiện tại sẽ bị <b>ghi đè</b>.</p>
+    <textarea id="restoreText" rows="8" placeholder='{"classes": ...}'></textarea>
+    <div class="dialog-actions">
+      <button type="button" class="btn" data-close="1">Huỷ</button>
+      <button type="button" class="btn" id="restoreFile">Chọn file…</button>
+      <button type="button" class="btn primary" id="restorePasteOk">Khôi phục</button>
+    </div>
+  </dialog>
+
   <input type="file" id="importFile" accept="application/json" hidden>
 
   <script src="firebase-config.js"></script>

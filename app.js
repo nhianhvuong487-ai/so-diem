@@ -402,8 +402,8 @@
     html += `<span class="spacer"></span>
       <button class="btn" id="exportCsv">Xuất Excel (CSV)</button>
       <button class="btn" id="printBtn">In</button>
-      <button class="btn" id="backupBtn" title="Tải toàn bộ dữ liệu về máy">Sao lưu</button>
-      <button class="btn" id="restoreBtn" title="Khôi phục từ file sao lưu">Khôi phục</button>`;
+      <button class="btn" id="backupBtn" title="Lấy toàn bộ dữ liệu (chép hoặc tải file)">Sao lưu</button>
+      <button class="btn" id="restoreBtn" title="Dán hoặc chọn file sao lưu">Khôi phục</button>`;
     $('#toolbar').innerHTML = html;
     if (def.type === 'sessions') $('#sessionFilter').value = String(ui.session);
 
@@ -800,28 +800,53 @@
     download(`${className(ui.cls)} - ${def.name}.csv`, csv, 'text/csv;charset=utf-8');
   }
 
-  function backup() {
-    saveNow();
+  function backupText() { saveNow(); return JSON.stringify(state); }
+
+  function backupFile() {
     const d = new Date().toISOString().slice(0, 10);
-    download(`so-diem-sao-luu-${d}.json`, JSON.stringify(state, null, 2), 'application/json');
+    download(`so-diem-sao-luu-${d}.json`, backupText(), 'application/json');
+  }
+
+  function openBackup() {
+    $('#backupText').value = backupText();
+    $('#backupMsg').textContent = '';
+    $('#backupDialog').showModal();
+    $('#backupText').select();
+  }
+
+  async function copyBackup() {
+    const ta = $('#backupText');
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    if (!ok && navigator.clipboard) {
+      try { await navigator.clipboard.writeText(ta.value); ok = true; } catch (e) { ok = false; }
+    }
+    $('#backupMsg').textContent = ok ? '✅ Đã sao chép. Mở web mới → Khôi phục → dán vào.' : 'Không tự sao chép được: hãy bấm vào ô, nhấn Ctrl+A rồi Ctrl+C (điện thoại: giữ tay → Chọn tất cả → Sao chép).';
+  }
+
+  /** Nạp dữ liệu sao lưu (chuỗi JSON) – ghi đè dữ liệu hiện tại */
+  function restoreText(text) {
+    try {
+      const data = JSON.parse(String(text).trim());
+      if (!data || typeof data.classes !== 'object') throw new Error('Dữ liệu không đúng định dạng sổ điểm');
+      if (!confirm('Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại' + (cloud ? ' (bảng điểm chung của mọi người)' : '') + '. Tiếp tục?')) return false;
+      state = data;
+      saveNow();
+      renderAll();
+      if (cloud) uploadAll();
+      alert('Đã khôi phục dữ liệu.');
+      return true;
+    } catch (e) {
+      alert('Không đọc được dữ liệu: ' + e.message);
+      return false;
+    }
   }
 
   function restore(file) {
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!data || typeof data.classes !== 'object') throw new Error('File không đúng định dạng');
-        if (!confirm('Khôi phục sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại. Tiếp tục?')) return;
-        state = data;
-        saveNow();
-        renderAll();
-        if (cloud) uploadAll();
-        alert('Đã khôi phục dữ liệu.');
-      } catch (e) {
-        alert('Không đọc được file: ' + e.message);
-      }
-    };
+    reader.onload = () => { if (restoreText(reader.result)) $('#restoreDialog').close(); };
     reader.readAsText(file);
   }
 
@@ -830,6 +855,7 @@
     const t = e.target.closest('button');
     if (!t) return;
     const d = t.dataset;
+    if (d.close) { t.closest('dialog').close(); return; }
     if (d.cls) { ui.cls = d.cls; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.sheet) { ui.sheet = d.sheet; ui.session = 'all'; saveUI(); renderAll(); return; }
     if (d.del) { deleteStudent(d.del); return; }
@@ -874,8 +900,12 @@
       }
       case 'exportCsv': exportCsv(); break;
       case 'printBtn': window.print(); break;
-      case 'backupBtn': backup(); break;
-      case 'restoreBtn': $('#importFile').click(); break;
+      case 'backupBtn': openBackup(); break;
+      case 'copyBackup': copyBackup(); break;
+      case 'fileBackup': backupFile(); break;
+      case 'restoreBtn': $('#restoreText').value = ''; $('#restoreDialog').showModal(); break;
+      case 'restorePasteOk': if (restoreText($('#restoreText').value)) $('#restoreDialog').close(); break;
+      case 'restoreFile': $('#importFile').click(); break;
     }
   });
 
