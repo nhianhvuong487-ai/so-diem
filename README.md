@@ -24,6 +24,9 @@ và tô màu (≥8 xanh lá, 6,5–8 xanh dương, 5–6,5 cam, <5 đỏ).
 **Điểm danh:** bấm 1 lần = ✓ có mặt, 2 lần = ✗ vắng, 3 lần = xoá. Học sinh vắng buổi nào thì các ô của buổi đó
 và các ô tên, tổng kết trên dòng của em được bôi đỏ.
 
+**Điểm mục tiêu (chỉ sheet Điểm khảo sát):** cột cạnh Họ và tên, nhập điểm mục tiêu /10 của từng học sinh.
+Ô điểm (sau quy đổi /10) **≥ mục tiêu** bôi xanh, **dưới 5** bôi đỏ, còn lại giữ nguyên màu.
+
 **Thêm / xoá cột và buổi:** nút **+ Thêm cột** (chọn loại: điểm, ô tích, điểm danh, ghi chú) và **+ Thêm buổi**.
 Nút **×** trên tiêu đề dùng để xoá cột hoặc xoá buổi. Bấm đúp tên cột để đổi tên.
 Mỗi lớp và mỗi sheet có bộ cột riêng.

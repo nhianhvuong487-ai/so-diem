@@ -141,6 +141,24 @@ table.grid { border-collapse: separate; border-spacing: 0; min-width: 100%; }
   left: 3.2em; min-width: 14em; text-align: left;
   border-right: 2px solid #c4b5fd; box-shadow: 6px 0 10px -8px rgba(76, 29, 149, .35);
 }
+.grid .c-target {
+  left: 17.2em; width: 5.6em; min-width: 5.6em; max-width: 5.6em;
+  border-right: 2px solid #c4b5fd; box-shadow: 6px 0 10px -8px rgba(76, 29, 149, .35);
+}
+.grid tr:has(.c-target) .c-name, .grid thead tr:first-child:has(.c-target) .c-name { box-shadow: none; }
+.grid .c-name { width: 14em; max-width: 14em; }
+.grid td.c-target { background: #f0fdf4; }
+.grid input.target {
+  width: 4em; padding: .25em .3em; border: 1px solid #86efac; border-radius: 10px; text-align: center;
+  background: #fff; font-weight: 700; color: #047857;
+}
+/* Điểm khảo sát so với mục tiêu */
+.grid td.score.tgt-hit { background: #bbf7d0; }
+.grid td.score.tgt-hit .conv { color: #047857; }
+.grid td.score.tgt-low { background: #fecdd3; }
+.grid td.score.tgt-low .conv { color: #be123c; }
+.legend .hit::before { color: #4ade80; }
+.legend .low::before { color: #fb7185; }
 .grid thead th.sticky { z-index: 6; background: #f3f0ff; }
 .grid thead tr.totals-row th.sticky { background: #fff7d6; }
 

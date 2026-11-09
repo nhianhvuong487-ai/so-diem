@@ -17,7 +17,7 @@
 
   const SHEETS = [
     { id: 'trenlop', name: 'Điểm trên lớp', type: 'sessions' },
-    { id: 'khaosat', name: 'Điểm khảo sát', type: 'sessions' },
+    { id: 'khaosat', name: 'Điểm khảo sát', type: 'sessions', target: true },
     { id: 'kehoach', name: 'Kế hoạch IELTS', type: 'plan' },
   ];
 
@@ -86,6 +86,7 @@
     if (type === 'sessions') {
       if (!sh.totals) sh.totals = {};
       if (!sh.data) sh.data = {};
+      if (sheetDef(sid).target && !sh.targets) sh.targets = {};
       if (!Array.isArray(sh.sessions)) sh.sessions = Array.from({ length: DEFAULT_SESSIONS }, (_, i) => ({ id: String(i + 1) }));
       if (!Array.isArray(sh.cols)) sh.cols = DEFAULT_COLS.map(c => Object.assign({}, c));
     } else if (!sh.rows) sh.rows = [];
@@ -150,6 +151,15 @@
     if (t === null || t <= 0) return { text: 'thiếu tổng', cls: 'warn' };
     const v = toTen(c, t);
     return { text: fmt(v) + '/10', cls: gradeClass(v) };
+  }
+
+  /** Điểm khảo sát: so với điểm mục tiêu – ≥ mục tiêu: xanh, < 5: đỏ, còn lại giữ nguyên */
+  function targetClass(sh, stId, score) {
+    if (!sh.targets || score === null || score === undefined) return '';
+    const tg = num(sh.targets[stId]);
+    if (tg !== null && score >= tg) return 'tgt-hit';
+    if (score < 5) return 'tgt-low';
+    return '';
   }
 
   // ---------- Helpers ----------
@@ -244,8 +254,9 @@
     $('#hint').innerHTML = def.type === 'sessions'
       ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → tự quy đổi <b>/10</b>.
          Điểm danh: bấm 1 lần = <b>✓ có mặt</b>, 2 lần = <b>✗ vắng</b> (cả dòng bôi đỏ), 3 lần = xoá.
-         Di chuột lên tiêu đề để hiện nút <b>×</b> xoá cột / xoá buổi; bấm đúp tên cột để đổi tên.
-         <span class="legend"><span class="good">≥8</span><span class="ok">6,5–8</span><span class="mid">5–6,5</span><span class="bad">&lt;5</span><span class="abs">vắng</span></span>`
+         Bấm nút <b>×</b> trên tiêu đề để xoá cột / xoá buổi; bấm đúp tên cột để đổi tên.
+         ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên. ' : ''}
+         <span class="legend">${def.target ? '<span class="hit">đạt mục tiêu</span><span class="low">dưới 5</span>' : ''}<span class="good">≥8</span><span class="ok">6,5–8</span><span class="mid">5–6,5</span><span class="bad">&lt;5</span><span class="abs">vắng</span></span>`
       : 'Lập kế hoạch học IELTS cho ' + esc(className(ui.cls)) + '. Dữ liệu tự lưu trên trình duyệt này.';
   }
 
@@ -276,7 +287,8 @@
         const t = getTotal(sh, sid, c.key);
         const cv = convInfo(v, t);
         const over = num(v) !== null && num(t) !== null && num(v) > num(t);
-        return `<td class="score ${extraCls}" ${style}><div class="cell"><input type="number" min="0" step="any" data-cell="${ref}" value="${v ?? ''}" class="${over ? 'over' : ''}" placeholder="đúng" title="Số câu đúng – ${title}"><span class="conv ${cv.cls}" data-conv="${ref}">${cv.text}</span></div></td>`;
+        const tc = targetClass(sh, stId, toTen(v, t));
+        return `<td class="score ${extraCls} ${tc}" ${style}><div class="cell"><input type="number" min="0" step="any" data-cell="${ref}" value="${v ?? ''}" class="${over ? 'over' : ''}" placeholder="đúng" title="Số câu đúng – ${title}"><span class="conv ${cv.cls}" data-conv="${ref}">${cv.text}</span></div></td>`;
       }
     }
   }
@@ -289,10 +301,13 @@
     const n = Math.max(cols.length, 1);
     const hasAttend = !!attendCol(sh);
     const st = s => `style="--h:${hueOf(sh, s.id)}"`;
+    const hasTarget = !!sheetDef(ui.sheet).target;
+    const lead = hasTarget ? 3 : 2;
 
     let h = `<h2 class="print-title">${esc(className(ui.cls))} – ${esc(sheetDef(ui.sheet).name)}</h2>`;
     h += '<table class="grid"><thead><tr>';
     h += '<th rowspan="2" class="sticky c-stt">STT</th><th rowspan="2" class="sticky c-name">Họ và tên</th>';
+    if (hasTarget) h += '<th rowspan="2" class="sticky c-target">Điểm<br>mục tiêu<br>(/10)</th>';
     sessions.forEach(s => {
       h += `<th colspan="${n}" class="sh sess-start" ${st(s)}>${sessionLabel(sh, s.id)} <button class="sess-del" data-delsess="${esc(s.id)}" title="Xoá ${sessionLabel(sh, s.id)}">×</button></th>`;
     });
@@ -303,7 +318,7 @@
         h += `<th class="sub ss ${i === 0 ? 'sess-start' : ''}" ${st(s)}><span class="lbl" data-rencol="${esc(c.key)}" title="Bấm đúp để đổi tên">${esc(c.label)}</span><button class="col-del" data-delcol="${esc(c.key)}" title="Xoá cột “${esc(c.label)}”">×</button></th>`;
       });
     });
-    h += '</tr><tr class="totals-row"><th colspan="2" class="sticky c-stt" style="text-align:right">Tổng số câu →</th>';
+    h += `</tr><tr class="totals-row"><th colspan="${lead}" class="sticky c-stt" style="text-align:right">Tổng số câu →</th>`;
     sessions.forEach(s => {
       if (!cols.length) { h += `<th class="sc sess-start" ${st(s)}></th>`; return; }
       cols.forEach((c, i) => {
@@ -317,7 +332,7 @@
     h += '</tr></thead><tbody>';
 
     if (!students.length) {
-      h += `<tr><td class="empty" colspan="${2 + sessions.length * n + 4}">Chưa có học sinh. Hãy thêm học sinh ở thanh công cụ phía trên.</td></tr>`;
+      h += `<tr><td class="empty" colspan="${lead + sessions.length * n + 4}">Chưa có học sinh. Hãy thêm học sinh ở thanh công cụ phía trên.</td></tr>`;
     }
 
     students.forEach((stu, idx) => {
@@ -325,6 +340,7 @@
       const rowAbs = absentVisible ? 'absent' : '';
       h += `<tr data-st="${stu.id}"><td class="sticky c-stt ${rowAbs}">${idx + 1}</td>`;
       h += `<td class="sticky c-name ${rowAbs}"><input class="name" data-name="${stu.id}" value="${esc(stu.name)}"></td>`;
+      if (hasTarget) h += `<td class="sticky c-target ${rowAbs}"><input type="number" class="target" min="0" max="10" step="0.1" data-target="${stu.id}" value="${sh.targets[stu.id] ?? ''}" placeholder="—" title="Điểm mục tiêu (/10)"></td>`;
       sessions.forEach(s => {
         const abs = sessionAbsent(sh, stu.id, s.id) ? 'absent' : '';
         if (!cols.length) { h += `<td class="sc sess-start ${abs}" ${st(s)}></td>`; return; }
@@ -340,7 +356,7 @@
     h += '</tbody>';
 
     if (students.length) {
-      h += '<tfoot><tr><td colspan="2" class="sticky c-stt" style="text-align:right">TB lớp / Có mặt</td>';
+      h += `<tfoot><tr><td colspan="${lead}" class="sticky c-stt" style="text-align:right">TB lớp / Có mặt</td>`;
       sessions.forEach(s => {
         if (!cols.length) { h += `<td class="sc sess-start" ${st(s)}></td>`; return; }
         cols.forEach((c, i) => {
@@ -425,6 +441,10 @@
     span.className = 'conv ' + cv.cls;
     span.textContent = cv.text;
     input.classList.toggle('over', num(v) !== null && num(t) !== null && num(v) > num(t));
+    const td = input.closest('td');
+    td.classList.remove('tgt-hit', 'tgt-low');
+    const tc = targetClass(sh, tr.dataset.st, toTen(v, t));
+    if (tc) td.classList.add(tc);
   }
 
   function renderPlan() {
@@ -473,7 +493,7 @@
     if (!st) return;
     if (!confirm(`Xoá học sinh “${st.name}” và toàn bộ điểm của em ở tất cả các sheet?`)) return;
     c.students = c.students.filter(s => s.id !== id);
-    Object.values(c.sheets).forEach(sh => { if (sh.data) delete sh.data[id]; });
+    Object.values(c.sheets).forEach(sh => { if (sh.data) delete sh.data[id]; if (sh.targets) delete sh.targets[id]; });
     save();
     renderContent();
   }
@@ -547,8 +567,9 @@
     const rows = [];
     if (def.type === 'sessions') {
       const students = classData(ui.cls).students;
-      const head = ['STT', 'Họ và tên'];
-      const totalsRow = ['', 'Tổng số câu'];
+      const hasTarget = !!def.target;
+      const head = ['STT', 'Họ và tên'].concat(hasTarget ? ['Điểm mục tiêu'] : []);
+      const totalsRow = ['', 'Tổng số câu'].concat(hasTarget ? [''] : []);
       sh.sessions.forEach((s, i) => sh.cols.forEach(c => {
         head.push(`Buổi ${i + 1} - ${c.label}${c.type === 'score' ? ' (/10)' : ''}`);
         totalsRow.push(c.type === 'score' ? (getTotal(sh, s.id, c.key) ?? '') : '');
@@ -556,7 +577,7 @@
       head.push('Tổng số buổi đi học', 'Số buổi vắng', 'Điểm TB (/10)');
       rows.push(head, totalsRow);
       students.forEach((st, i) => {
-        const r = [i + 1, st.name];
+        const r = [i + 1, st.name].concat(hasTarget ? [fmt(num(sh.targets[st.id]))] : []);
         sh.sessions.forEach(s => sh.cols.forEach(c => {
           const v = getCell(sh, st.id, s.id, c.key);
           if (c.type === 'attend') r.push(isPresent(v) ? 'có mặt' : isAbsent(v) ? 'vắng' : '');
@@ -694,6 +715,18 @@
 
   document.addEventListener('input', e => {
     const t = e.target;
+    if (t.dataset.target) {
+      const sh = sheetData(ui.cls, ui.sheet);
+      const v = num(t.value);
+      if (v === null) delete sh.targets[t.dataset.target]; else sh.targets[t.dataset.target] = v;
+      save();
+      const tr = t.closest('tr[data-st]');
+      tr.querySelectorAll('input[data-cell][type=number]').forEach(inp => {
+        const [sid, key] = inp.dataset.cell.split('|');
+        updateScoreCell(tr, sid, key);
+      });
+      return;
+    }
     if (t.dataset.name) {
       const st = classData(ui.cls).students.find(s => s.id === t.dataset.name);
       if (st) { st.name = t.value; save(); }
