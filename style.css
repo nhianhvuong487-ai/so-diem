@@ -134,6 +134,10 @@ table.grid { border-collapse: separate; border-spacing: 0; min-width: 100%; }
 /* Mỗi buổi một màu: --h là sắc độ của buổi */
 .grid .sc { background: hsl(var(--h) 90% 97.5%); }
 .grid th.sh { background: hsl(var(--h) 85% 86%); color: hsl(var(--h) 65% 25%); font-size: 1em; }
+.grid th.sh input.sdate {
+  font: inherit; font-size: .78em; font-weight: 500; margin-top: 3px; padding: .1em .4em;
+  border: 1px solid hsl(var(--h) 60% 75%); border-radius: 8px; background: rgba(255,255,255,.7); color: inherit;
+}
 .grid th.ss { background: hsl(var(--h) 85% 93%); color: hsl(var(--h) 55% 28%); }
 .grid thead tr.totals-row th.sc { background: hsl(var(--h) 90% 95%); }
 .grid tfoot td.sc { background: hsl(var(--h) 85% 94%); }
