@@ -490,7 +490,7 @@
 
     $('#hint').innerHTML = def.type === 'sessions'
       ? `Hàng <b>“Tổng số câu”</b>: nhập tổng số câu của bài. Ô điểm: nhập <b>số câu đúng</b> → khi rời ô sẽ tự hiện <b>điểm /10</b> (bấm lại vào ô để xem/sửa số câu đúng).
-         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì chỉ các ô của buổi đó bôi đỏ. Nút <b>↕ Sắp xếp A→Z</b> xếp theo tên (chữ cuối của họ tên).
+         Điểm danh, BTVN, chép nghe, chép phạt: bấm 1 lần = <b>✓</b>, 2 lần = <b>✗</b>, 3 lần = xoá. Vắng (✗ điểm danh) thì chỉ các ô của buổi đó bôi đỏ. Nút <b>↕ Sắp xếp A→Z</b> xếp theo tên (chữ cuối của họ tên). Dùng phím <b>← → ↑ ↓</b> để di chuyển giữa các ô, <b>Enter</b> để xuống ô dưới.
          ${def.target ? 'Cột <b>Điểm mục tiêu</b>: ô điểm <b>≥ mục tiêu</b> bôi xanh, <b>dưới 5</b> bôi đỏ, còn lại giữ nguyên.' : 'Điểm <b>từ 5 trở lên</b> bôi xanh, <b>dưới 5</b> bôi đỏ.'}
          <span class="legend"><span class="hit">${def.target ? 'đạt mục tiêu' : '≥ 5'}</span><span class="low">dưới 5</span><span class="abs">vắng</span></span>`
       : 'Lập kế hoạch học IELTS cho ' + esc(className(ui.cls)) + '. Dữ liệu tự lưu trên trình duyệt này.';
@@ -1191,6 +1191,92 @@
   document.addEventListener('dblclick', e => {
     const lbl = e.target.closest('[data-rencol]');
     if (lbl) renameColumn(lbl.dataset.rencol);
+  });
+
+  // ---------- Di chuyển giữa các ô bằng phím mũi tên (như Excel) ----------
+  const NAV_SEL = 'input:not([type=hidden]):not([type=date]):not([type=checkbox]), textarea, select, button.att-btn, input[type=checkbox]';
+  function navCells(tr) {
+    return [...tr.querySelectorAll(NAV_SEL)].filter(el => !el.disabled && el.offsetParent !== null);
+  }
+  function navRows() {
+    return [...document.querySelectorAll('#content thead tr.totals-row, #content tbody tr')].filter(tr => navCells(tr).length);
+  }
+  function centerX(el) { const r = (el.closest('td,th') || el).getBoundingClientRect(); return r.left + r.width / 2; }
+  /** Cuộn để ô không bị cột cố định bên trái / hàng tiêu đề che mất */
+  function ensureVisible(el) {
+    const wrap = $('#content');
+    const cell = el.closest('td,th') || el;
+    const r = cell.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+    let leftEdge = w.left;
+    wrap.querySelectorAll('thead tr:first-child th.sticky').forEach(th => { leftEdge = Math.max(leftEdge, th.getBoundingClientRect().right); });
+    const head = wrap.querySelector('thead');
+    const topEdge = head && !cell.closest('thead') ? head.getBoundingClientRect().bottom : w.top;
+    const isSticky = cell.classList.contains('sticky');
+    if (!isSticky && r.left < leftEdge) wrap.scrollLeft -= (leftEdge - r.left) + 4;
+    else if (r.right > w.right) wrap.scrollLeft += (r.right - w.right) + 4;
+    if (r.top < topEdge) wrap.scrollTop -= (topEdge - r.top) + 4;
+    else if (r.bottom > w.bottom) wrap.scrollTop += (r.bottom - w.bottom) + 4;
+  }
+  function goTo(el) {
+    if (!el) return false;
+    el.focus({ preventScroll: true });
+    ensureVisible(el);
+    if (el.tagName === 'INPUT' && el.type === 'text' && el.select) { try { el.select(); } catch (err) { /* ignore */ } }
+    return true;
+  }
+  function moveFrom(el, dir) {
+    const tr = el.closest('tr');
+    if (!tr) return false;
+    if (dir === 'left' || dir === 'right') {
+      const cells = navCells(tr);
+      const i = cells.indexOf(el);
+      return goTo(cells[i + (dir === 'right' ? 1 : -1)]);
+    }
+    const rows = navRows();
+    let i = rows.indexOf(tr);
+    const x = centerX(el);
+    while (true) {
+      i += dir === 'down' ? 1 : -1;
+      if (i < 0 || i >= rows.length) return false;
+      const cells = navCells(rows[i]);
+      // ô trong dòng kia nằm thẳng cột nhất (kể cả ô gộp nhiều cột như dòng ghi chú)
+      let best = null, bestD = Infinity;
+      cells.forEach(c => {
+        const box = (c.closest('td,th') || c).getBoundingClientRect();
+        const d = x >= box.left && x <= box.right ? 0 : Math.min(Math.abs(x - box.left), Math.abs(x - box.right));
+        if (d < bestD) { bestD = d; best = c; }
+      });
+      if (best) return goTo(best);
+    }
+  }
+  /** Ô chữ dài (tên, ghi chú): chỉ nhảy ô khi con trỏ đã ở đầu / cuối */
+  function caretAllows(el, dir) {
+    const isLongText = el.tagName === 'TEXTAREA' || el.classList.contains('name') || (el.dataset.plan && el.tagName === 'INPUT');
+    if (!isLongText) return true;
+    let a, b;
+    try { a = el.selectionStart; b = el.selectionEnd; } catch (err) { return true; }
+    if (a == null) return true;
+    const len = el.value.length;
+    if (dir === 'left') return a === 0 && b === 0;
+    if (dir === 'right') return a === len && b === len;
+    if (el.tagName !== 'TEXTAREA') return true;
+    if (dir === 'up') return el.value.lastIndexOf('\n', a - 1) === -1;
+    return el.value.indexOf('\n', b) === -1;
+  }
+  $('#content').addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+    const el = e.target;
+    if (!el.matches || !el.matches(NAV_SEL)) return;
+    const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+    let dir = map[e.key];
+    // Enter ở ô nhập (không phải ô ghi chú / nút) = xuống ô dưới, Shift+Enter = lên
+    if (e.key === 'Enter' && el.tagName === 'INPUT') dir = e.shiftKey ? 'up' : 'down';
+    if (!dir) return;
+    if (e.shiftKey && e.key !== 'Enter') return;           // Shift+mũi tên: để chọn chữ
+    if (el.tagName === 'SELECT' && (dir === 'up' || dir === 'down')) return;
+    if (!caretAllows(el, dir)) return;
+    if (moveFrom(el, dir)) e.preventDefault();
+    else if (e.key === 'Enter') e.preventDefault();
   });
 
   document.addEventListener('keydown', e => {
